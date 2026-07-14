@@ -7,7 +7,6 @@ from tkinter import filedialog, messagebox, ttk
 from hash_core import (
     build_manifest,
     collect_files,
-    get_selected_algorithm_names,
     get_total_size_bytes,
     hash_files,
     save_manifest_outputs
@@ -32,6 +31,7 @@ class HashManifestApp:
         self.root = root
         self.root.title(f"{APP_NAME} v{APP_VERSION}")
         self.root.geometry("1200x760")
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
         self.settings = load_or_create_settings()
 
@@ -50,6 +50,19 @@ class HashManifestApp:
         self.load_defaults_from_settings()
         self.poll_progress_queue()
 
+    def on_close(self):
+        if self.hashing_active:
+            confirm = messagebox.askyesno(
+                "Hashing In Progress",
+                "Hashing is currently in progress. Closing the application will stop the operation.\n\n"
+                "Are you sure you want to close?"
+            )
+
+            if not confirm:
+                return
+
+        self.root.destroy()
+
     def apply_theme(self):
         theme = self.settings.get("appearance", {}).get("theme", "dark")
 
@@ -63,7 +76,6 @@ class HashManifestApp:
         if theme == "light":
             colors = {
                 "bg": "#f5f5f5",
-                "panel": "#ffffff",
                 "text": "#111111",
                 "muted": "#444444",
                 "accent": "#b8860b",
@@ -79,7 +91,6 @@ class HashManifestApp:
         else:
             colors = {
                 "bg": "#111111",
-                "panel": "#1b1b1b",
                 "text": "#f2f2f2",
                 "muted": "#c0c0c0",
                 "accent": "#d4af37",
@@ -300,6 +311,7 @@ class HashManifestApp:
         self.sha256_var = tk.BooleanVar(value=True)
         self.recursive_var = tk.BooleanVar(value=True)
         self.include_explanation_var = tk.BooleanVar(value=True)
+        self.include_generation_method_var = tk.BooleanVar(value=True)
 
         ttk.Checkbutton(options_frame, text="MD5", variable=self.md5_var).grid(row=0, column=0, sticky="w")
         ttk.Checkbutton(options_frame, text="SHA-1", variable=self.sha1_var).grid(row=1, column=0, sticky="w")
@@ -308,7 +320,8 @@ class HashManifestApp:
         ttk.Separator(options_frame).grid(row=3, column=0, sticky="ew", pady=8)
 
         ttk.Checkbutton(options_frame, text="Include folders recursively", variable=self.recursive_var).grid(row=4, column=0, sticky="w")
-        ttk.Checkbutton(options_frame, text="Include hashing explanation in TXT report", variable=self.include_explanation_var).grid(row=5, column=0, sticky="w")
+        ttk.Checkbutton(options_frame, text="Include hash generation method in TXT report", variable=self.include_generation_method_var).grid(row=5, column=0, sticky="w")
+        ttk.Checkbutton(options_frame, text="Include hashing explanation in TXT report", variable=self.include_explanation_var).grid(row=6, column=0, sticky="w")
 
         selection_frame = ttk.LabelFrame(parent, text="File / Folder Selection", padding=10)
         selection_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 0))
@@ -408,6 +421,7 @@ class HashManifestApp:
         self.sha1_var.set(bool(hash_defaults.get("sha1", False)))
         self.sha256_var.set(bool(hash_defaults.get("sha256", True)))
         self.include_explanation_var.set(bool(hash_defaults.get("include_hashing_explanation", True)))
+        self.include_generation_method_var.set(bool(hash_defaults.get("include_hash_generation_method", True)))
 
     def get_selected_algorithms(self):
         return {
@@ -652,6 +666,7 @@ class HashManifestApp:
             recursive=self.recursive_var.get(),
             algorithms=self.get_selected_algorithms(),
             include_hashing_explanation=self.include_explanation_var.get(),
+            include_hash_generation_method=self.include_generation_method_var.get(),
             notes=notes,
             files=self.hash_results
         )
@@ -676,11 +691,19 @@ class HashManifestApp:
         lines.append(f"Source Description: {case_info.get('source_description', '')}")
         lines.append("")
 
+        lines.append("SELECTED INPUT SUMMARY")
+        lines.append("-" * 80)
+        lines.append(f"Selected Files: {len(self.selected_files)}")
+        lines.append(f"Selected Folders: {len(self.selected_folders)}")
+        lines.append(f"Recursive Folder Selection: {'Yes' if hash_settings.get('recursive') else 'No'}")
+        lines.append(f"Total Files Found: {summary['total_files']}")
+        lines.append("")
+
         lines.append("HASH SETTINGS")
         lines.append("-" * 80)
         algorithms = hash_settings.get("algorithms", [])
         lines.append(f"Algorithms: {', '.join(algorithms) if algorithms else 'None'}")
-        lines.append(f"Recursive Folder Selection: {'Yes' if hash_settings.get('recursive') else 'No'}")
+        lines.append(f"Include Hash Generation Method: {'Yes' if hash_settings.get('include_hash_generation_method') else 'No'}")
         lines.append(f"Include Hashing Explanation: {'Yes' if hash_settings.get('include_hashing_explanation') else 'No'}")
         lines.append("")
 
@@ -732,6 +755,8 @@ class HashManifestApp:
             txt_path, csv_path, json_path = save_manifest_outputs(manifest, self.settings)
 
             review_window.destroy()
+
+            self.status_var.set("Manifest exported successfully.")
 
             messagebox.showinfo(
                 "Manifest Exported",
@@ -851,7 +876,7 @@ class SettingsWindow:
 
         self.window = tk.Toplevel(app.root)
         self.window.title("Settings")
-        self.window.geometry("700x560")
+        self.window.geometry("740x590")
         self.window.transient(app.root)
         self.window.grab_set()
 
@@ -906,7 +931,7 @@ class SettingsWindow:
             "Light mode is provided for readability, printing environments, and user preference."
         )
 
-        ttk.Label(frame, text=note, wraplength=620).grid(
+        ttk.Label(frame, text=note, wraplength=660).grid(
             row=1,
             column=0,
             columnspan=2,
@@ -962,7 +987,7 @@ class SettingsWindow:
             "The image path is stored for future report generation support."
         )
 
-        ttk.Label(frame, text=note, wraplength=620).grid(
+        ttk.Label(frame, text=note, wraplength=660).grid(
             row=1,
             column=0,
             columnspan=4,
@@ -978,19 +1003,35 @@ class SettingsWindow:
         self.default_sha1_var = tk.BooleanVar()
         self.default_sha256_var = tk.BooleanVar()
         self.default_include_explanation_var = tk.BooleanVar()
+        self.default_include_generation_method_var = tk.BooleanVar()
 
         ttk.Checkbutton(frame, text="MD5 checked by default", variable=self.default_md5_var).grid(row=0, column=0, sticky="w", pady=4)
         ttk.Checkbutton(frame, text="SHA-1 checked by default", variable=self.default_sha1_var).grid(row=1, column=0, sticky="w", pady=4)
         ttk.Checkbutton(frame, text="SHA-256 checked by default", variable=self.default_sha256_var).grid(row=2, column=0, sticky="w", pady=4)
-        ttk.Checkbutton(frame, text="Include hashing explanation in TXT report by default", variable=self.default_include_explanation_var).grid(row=3, column=0, sticky="w", pady=4)
+
+        ttk.Separator(frame).grid(row=3, column=0, sticky="ew", pady=8)
+
+        ttk.Checkbutton(
+            frame,
+            text="Include hash generation method in TXT report by default",
+            variable=self.default_include_generation_method_var
+        ).grid(row=4, column=0, sticky="w", pady=4)
+
+        ttk.Checkbutton(
+            frame,
+            text="Include hashing explanation in TXT report by default",
+            variable=self.default_include_explanation_var
+        ).grid(row=5, column=0, sticky="w", pady=4)
 
         note = (
             "Recommended default: MD5 and SHA-256 enabled, SHA-1 disabled.\n\n"
             "SHA-1 is included as an option for compatibility with older workflows, "
-            "but it is disabled by default."
+            "but it is disabled by default.\n\n"
+            "Hash Generation Method explains what mechanism created the hashes. "
+            "Hashing Explanation explains what hash values are."
         )
 
-        ttk.Label(frame, text=note, wraplength=620).grid(row=4, column=0, sticky="w", pady=(12, 0))
+        ttk.Label(frame, text=note, wraplength=660).grid(row=6, column=0, sticky="w", pady=(12, 0))
 
     def add_labeled_entry(self, parent, label_text, variable, row):
         label = ttk.Label(parent, text=label_text)
@@ -1021,6 +1062,7 @@ class SettingsWindow:
         self.default_sha1_var.set(bool(hash_defaults.get("sha1", False)))
         self.default_sha256_var.set(bool(hash_defaults.get("sha256", True)))
         self.default_include_explanation_var.set(bool(hash_defaults.get("include_hashing_explanation", True)))
+        self.default_include_generation_method_var.set(bool(hash_defaults.get("include_hash_generation_method", True)))
 
     def browse_base_output_dir(self):
         folder = filedialog.askdirectory(title="Select Base Output Folder")
@@ -1065,7 +1107,8 @@ class SettingsWindow:
             "md5": self.default_md5_var.get(),
             "sha1": self.default_sha1_var.get(),
             "sha256": self.default_sha256_var.get(),
-            "include_hashing_explanation": self.default_include_explanation_var.get()
+            "include_hashing_explanation": self.default_include_explanation_var.get(),
+            "include_hash_generation_method": self.default_include_generation_method_var.get()
         }
 
         save_settings(self.settings)

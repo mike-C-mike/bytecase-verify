@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 APP_NAME = "Hash Manifest Generator"
-APP_VERSION = "0.1.1"
+APP_VERSION = "0.1.2"
 
 
 def get_base_dir():
@@ -43,7 +43,8 @@ DEFAULT_SETTINGS = {
         "md5": True,
         "sha1": False,
         "sha256": True,
-        "include_hashing_explanation": True
+        "include_hashing_explanation": True,
+        "include_hash_generation_method": True
     }
 }
 

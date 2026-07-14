@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
-from report_templates import HASHING_EXPLANATION
+from report_templates import HASH_GENERATION_METHOD, HASHING_EXPLANATION
 from settings_service import APP_NAME, APP_VERSION, ensure_directories
 
 
@@ -234,6 +234,7 @@ def build_manifest(
     recursive: bool,
     algorithms: Dict[str, bool],
     include_hashing_explanation: bool,
+    include_hash_generation_method: bool,
     notes: str,
     files: List[Dict[str, object]]
 ) -> Dict[str, object]:
@@ -241,7 +242,6 @@ def build_manifest(
     Builds the full manifest object for JSON and report exports.
     """
     selected_algorithm_names = get_selected_algorithm_names(algorithms)
-
     summary = calculate_file_summary(files)
 
     manifest = {
@@ -261,7 +261,15 @@ def build_manifest(
         "hash_settings": {
             "algorithms": selected_algorithm_names,
             "recursive": bool(recursive),
-            "include_hashing_explanation": bool(include_hashing_explanation)
+            "include_hashing_explanation": bool(include_hashing_explanation),
+            "include_hash_generation_method": bool(include_hash_generation_method)
+        },
+        "hash_generation_method": {
+            "implementation": "Python hashlib",
+            "file_read_mode": "Binary read mode",
+            "chunk_size_bytes": CHUNK_SIZE,
+            "external_tools_used": False,
+            "external_tool_description": "No external command-line, PowerShell, CertUtil, or third-party hashing executable was used."
         },
         "file_summary": summary,
         "files": files,
@@ -369,6 +377,12 @@ def build_txt_manifest(manifest: Dict[str, object]) -> str:
     lines.append(f"Algorithms: {', '.join(algorithms) if algorithms else 'None selected'}")
     lines.append(f"Recursive Folder Selection: {'Yes' if hash_settings.get('recursive') else 'No'}")
     lines.append("")
+
+    if hash_settings.get("include_hash_generation_method"):
+        lines.append("HASH GENERATION METHOD")
+        lines.append("-" * 80)
+        lines.append(HASH_GENERATION_METHOD)
+        lines.append("")
 
     lines.append("FILE SUMMARY")
     lines.append("-" * 80)
