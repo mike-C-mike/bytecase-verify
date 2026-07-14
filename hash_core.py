@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
+from docx_exporter import save_docx_manifest
 from report_templates import HASH_GENERATION_METHOD, HASHING_EXPLANATION
 from settings_service import APP_NAME, APP_VERSION, ensure_directories
 
@@ -437,9 +438,9 @@ def build_txt_manifest(manifest: Dict[str, object]) -> str:
 def save_manifest_outputs(
     manifest: Dict[str, object],
     settings: Dict[str, object]
-) -> Tuple[Path, Path, Path]:
+) -> Tuple[Path, Path, Path, Path]:
     """
-    Saves TXT, CSV, and JSON outputs.
+    Saves TXT, CSV, DOCX, and JSON outputs.
     """
     paths = ensure_directories(settings)
 
@@ -453,6 +454,7 @@ def save_manifest_outputs(
 
     txt_path = paths["reports_dir"] / f"{base_filename}.txt"
     csv_path = paths["reports_dir"] / f"{base_filename}.csv"
+    docx_path = paths["reports_dir"] / f"{base_filename}.docx"
     json_path = paths["saved_manifests_dir"] / f"{base_filename}.json"
 
     txt_report = build_txt_manifest(manifest)
@@ -461,11 +463,12 @@ def save_manifest_outputs(
         f.write(txt_report)
 
     save_csv_manifest(manifest, csv_path)
+    save_docx_manifest(manifest, settings, docx_path)
 
     with json_path.open("w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)
 
-    return txt_path, csv_path, json_path
+    return txt_path, csv_path, docx_path, json_path
 
 
 def save_csv_manifest(manifest: Dict[str, object], csv_path: Path) -> None:

@@ -725,7 +725,7 @@ class HashManifestApp:
             lines.append("")
 
         lines.append("This review has not written any output files yet.")
-        lines.append("Click Confirm Export to write TXT, CSV, and JSON outputs.")
+        lines.append("Click Confirm Export to write TXT, CSV, DOCX, and JSON outputs.")
 
         return "\n".join(lines)
 
@@ -752,7 +752,7 @@ class HashManifestApp:
 
     def export_reviewed_manifest(self, manifest, review_window):
         try:
-            txt_path, csv_path, json_path = save_manifest_outputs(manifest, self.settings)
+            txt_path, csv_path, docx_path, json_path = save_manifest_outputs(manifest, self.settings)
 
             review_window.destroy()
 
@@ -763,6 +763,7 @@ class HashManifestApp:
                 "Hash manifest exported successfully.\n\n"
                 f"TXT:\n{txt_path}\n\n"
                 f"CSV:\n{csv_path}\n\n"
+                f"DOCX:\n{docx_path}\n\n"
                 f"JSON:\n{json_path}"
             )
 
@@ -774,6 +775,12 @@ class HashManifestApp:
             )
 
         except OSError as e:
+            messagebox.showerror(
+                "Export Error",
+                f"The manifest could not be exported.\n\nDetails:\n{e}"
+            )
+
+        except Exception as e:
             messagebox.showerror(
                 "Export Error",
                 f"The manifest could not be exported.\n\nDetails:\n{e}"
