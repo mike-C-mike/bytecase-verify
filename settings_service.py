@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 APP_NAME = "Hash Manifest Generator"
-APP_VERSION = "0.3.0"
+APP_VERSION = "0.5.0"
 
 
 def get_base_dir():
@@ -51,19 +51,10 @@ DEFAULT_SETTINGS = {
 
 
 def deep_merge(default, loaded):
-    """
-    Recursively merges loaded settings into default settings.
-
-    This allows older settings.json files to continue working when new settings are added.
-    """
     result = default.copy()
 
     for key, value in loaded.items():
-        if (
-            key in result
-            and isinstance(result[key], dict)
-            and isinstance(value, dict)
-        ):
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
             result[key] = deep_merge(result[key], value)
         else:
             result[key] = value
@@ -72,11 +63,6 @@ def deep_merge(default, loaded):
 
 
 def normalize_settings(settings):
-    """
-    Normalizes settings after loading.
-
-    This keeps older settings.json files compatible and prevents duplicate technician values.
-    """
     technicians = settings.get("technicians", [])
 
     if not isinstance(technicians, list):
@@ -111,11 +97,6 @@ def normalize_settings(settings):
 
 
 def load_or_create_settings():
-    """
-    Loads settings.json if it exists.
-
-    If it does not exist, creates it using DEFAULT_SETTINGS.
-    """
     if not SETTINGS_PATH.exists():
         save_settings(DEFAULT_SETTINGS)
         return DEFAULT_SETTINGS.copy()
@@ -132,9 +113,6 @@ def load_or_create_settings():
 
 
 def save_settings(settings):
-    """
-    Saves settings.json next to the executable or source files.
-    """
     settings = normalize_settings(settings)
 
     with SETTINGS_PATH.open("w", encoding="utf-8") as f:
@@ -142,11 +120,6 @@ def save_settings(settings):
 
 
 def get_output_paths(settings):
-    """
-    Resolves output paths based on settings.
-
-    If base_output_dir is blank, outputs are created next to the app.
-    """
     output_settings = settings.get("output_paths", {})
 
     base_output_dir = output_settings.get("base_output_dir", "").strip()
@@ -169,9 +142,6 @@ def get_output_paths(settings):
 
 
 def ensure_directories(settings):
-    """
-    Ensures output directories exist and returns the resolved paths.
-    """
     paths = get_output_paths(settings)
 
     paths["base_dir"].mkdir(parents=True, exist_ok=True)

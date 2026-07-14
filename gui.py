@@ -4,6 +4,11 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
+from compare_core import (
+    build_compare_report,
+    load_manifest_json as load_compare_manifest_json,
+    save_compare_outputs
+)
 from hash_core import (
     build_manifest,
     collect_files,
@@ -24,13 +29,19 @@ from validators import (
     validate_hash_request,
     validate_manifest_for_export
 )
+from verification_core import (
+    build_verification_report,
+    get_manifest_algorithms,
+    load_manifest_json,
+    save_verification_outputs
+)
 
 
 class HashManifestApp:
     def __init__(self, root):
         self.root = root
         self.root.title(f"{APP_NAME} v{APP_VERSION}")
-        self.root.geometry("1200x760")
+        self.root.geometry("1250x800")
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
         self.settings = load_or_create_settings()
@@ -38,6 +49,10 @@ class HashManifestApp:
         self.selected_files = []
         self.selected_folders = []
         self.hash_results = []
+
+        self.verification_manifest = None
+        self.verification_manifest_path = ""
+
         self.total_bytes = 0
         self.processed_bytes = 0
         self.hashing_active = False
@@ -65,7 +80,6 @@ class HashManifestApp:
 
     def apply_theme(self):
         theme = self.settings.get("appearance", {}).get("theme", "dark")
-
         style = ttk.Style()
 
         try:
@@ -107,125 +121,36 @@ class HashManifestApp:
         self.theme_colors = colors
         self.root.configure(bg=colors["bg"])
 
-        style.configure(
-            ".",
-            background=colors["bg"],
-            foreground=colors["text"],
-            fieldbackground=colors["field"],
-            font=("Segoe UI", 10)
-        )
-
+        style.configure(".", background=colors["bg"], foreground=colors["text"], fieldbackground=colors["field"], font=("Segoe UI", 10))
         style.configure("TFrame", background=colors["bg"])
         style.configure("TLabel", background=colors["bg"], foreground=colors["text"])
         style.configure("Title.TLabel", background=colors["bg"], foreground=colors["accent"], font=("Segoe UI", 16, "bold"))
         style.configure("Muted.TLabel", background=colors["bg"], foreground=colors["muted"])
+        style.configure("TLabelframe", background=colors["bg"], foreground=colors["accent"], bordercolor=colors["border"])
+        style.configure("TLabelframe.Label", background=colors["bg"], foreground=colors["accent"], font=("Segoe UI", 10, "bold"))
 
-        style.configure(
-            "TLabelframe",
-            background=colors["bg"],
-            foreground=colors["accent"],
-            bordercolor=colors["border"]
-        )
-
-        style.configure(
-            "TLabelframe.Label",
-            background=colors["bg"],
-            foreground=colors["accent"],
-            font=("Segoe UI", 10, "bold")
-        )
-
-        style.configure(
-            "TButton",
-            background=colors["button"],
-            foreground=colors["button_text"],
-            padding=6,
-            borderwidth=1
-        )
-
+        style.configure("TButton", background=colors["button"], foreground=colors["button_text"], padding=6, borderwidth=1)
         style.map(
             "TButton",
-            background=[
-                ("active", colors["accent"]),
-                ("pressed", colors["accent"]),
-                ("disabled", colors["button"])
-            ],
-            foreground=[
-                ("active", "#111111"),
-                ("pressed", "#111111"),
-                ("disabled", colors["muted"])
-            ]
+            background=[("active", colors["accent"]), ("pressed", colors["accent"]), ("disabled", colors["button"])],
+            foreground=[("active", "#111111"), ("pressed", "#111111"), ("disabled", colors["muted"])]
         )
 
         style.configure("TCheckbutton", background=colors["bg"], foreground=colors["text"])
         style.map("TCheckbutton", background=[("active", colors["bg"])], foreground=[("active", colors["accent"])])
 
-        style.configure(
-            "TEntry",
-            fieldbackground=colors["field"],
-            foreground=colors["field_text"],
-            insertcolor=colors["accent"]
-        )
+        style.configure("TEntry", fieldbackground=colors["field"], foreground=colors["field_text"], insertcolor=colors["accent"])
+        style.configure("TCombobox", fieldbackground=colors["field"], background=colors["button"], foreground=colors["field_text"], arrowcolor=colors["accent"])
+        style.map("TCombobox", fieldbackground=[("readonly", colors["field"])], foreground=[("readonly", colors["field_text"])], background=[("readonly", colors["button"])])
 
-        style.configure(
-            "TCombobox",
-            fieldbackground=colors["field"],
-            background=colors["button"],
-            foreground=colors["field_text"],
-            arrowcolor=colors["accent"]
-        )
+        style.configure("Treeview", background=colors["tree_bg"], fieldbackground=colors["tree_bg"], foreground=colors["tree_text"], rowheight=24)
+        style.configure("Treeview.Heading", background=colors["heading_bg"], foreground=colors["accent"], font=("Segoe UI", 10, "bold"))
+        style.map("Treeview", background=[("selected", colors["accent"])], foreground=[("selected", "#111111")])
 
-        style.map(
-            "TCombobox",
-            fieldbackground=[("readonly", colors["field"])],
-            foreground=[("readonly", colors["field_text"])],
-            background=[("readonly", colors["button"])]
-        )
-
+        style.configure("Horizontal.TProgressbar", troughcolor=colors["field"], background=colors["accent"], bordercolor=colors["field"], lightcolor=colors["accent"], darkcolor=colors["accent"])
         style.configure("TNotebook", background=colors["bg"], borderwidth=0)
-
-        style.configure(
-            "TNotebook.Tab",
-            background=colors["button"],
-            foreground=colors["text"],
-            padding=(10, 5)
-        )
-
-        style.map(
-            "TNotebook.Tab",
-            background=[("selected", colors["accent"])],
-            foreground=[("selected", "#111111")]
-        )
-
-        style.configure(
-            "Treeview",
-            background=colors["tree_bg"],
-            fieldbackground=colors["tree_bg"],
-            foreground=colors["tree_text"],
-            rowheight=24
-        )
-
-        style.configure(
-            "Treeview.Heading",
-            background=colors["heading_bg"],
-            foreground=colors["accent"],
-            font=("Segoe UI", 10, "bold")
-        )
-
-        style.map(
-            "Treeview",
-            background=[("selected", colors["accent"])],
-            foreground=[("selected", "#111111")]
-        )
-
-        style.configure(
-            "Horizontal.TProgressbar",
-            troughcolor=colors["field"],
-            background=colors["accent"],
-            bordercolor=colors["field"],
-            lightcolor=colors["accent"],
-            darkcolor=colors["accent"]
-        )
-
+        style.configure("TNotebook.Tab", background=colors["button"], foreground=colors["text"], padding=(10, 5))
+        style.map("TNotebook.Tab", background=[("selected", colors["accent"])], foreground=[("selected", "#111111")])
         style.configure("TSeparator", background=colors["border"])
 
     def style_text_widget(self, widget):
@@ -252,12 +177,7 @@ class HashManifestApp:
         top_frame.grid(row=0, column=0, sticky="ew")
         top_frame.columnconfigure(0, weight=1)
 
-        title_label = ttk.Label(
-            top_frame,
-            text=f"{APP_NAME} v{APP_VERSION}",
-            style="Title.TLabel"
-        )
-        title_label.grid(row=0, column=0, sticky="w")
+        ttk.Label(top_frame, text=f"{APP_NAME} v{APP_VERSION}", style="Title.TLabel").grid(row=0, column=0, sticky="w")
 
         button_frame = ttk.Frame(top_frame)
         button_frame.grid(row=0, column=1, sticky="e")
@@ -295,9 +215,7 @@ class HashManifestApp:
         self.add_labeled_technician_combo(case_frame, "Technician", self.technician_var, 2)
         self.add_labeled_entry(case_frame, "Source Description", self.source_description_var, 3)
 
-        notes_label = ttk.Label(case_frame, text="Manifest Notes")
-        notes_label.grid(row=4, column=0, sticky="nw", pady=4)
-
+        ttk.Label(case_frame, text="Manifest / Verification / Compare Notes").grid(row=4, column=0, sticky="nw", pady=4)
         self.notes_text = tk.Text(case_frame, height=4, width=50)
         self.notes_text.grid(row=4, column=1, sticky="ew", pady=4)
         self.style_text_widget(self.notes_text)
@@ -316,9 +234,7 @@ class HashManifestApp:
         ttk.Checkbutton(options_frame, text="MD5", variable=self.md5_var).grid(row=0, column=0, sticky="w")
         ttk.Checkbutton(options_frame, text="SHA-1", variable=self.sha1_var).grid(row=1, column=0, sticky="w")
         ttk.Checkbutton(options_frame, text="SHA-256", variable=self.sha256_var).grid(row=2, column=0, sticky="w")
-
         ttk.Separator(options_frame).grid(row=3, column=0, sticky="ew", pady=8)
-
         ttk.Checkbutton(options_frame, text="Include folders recursively", variable=self.recursive_var).grid(row=4, column=0, sticky="w")
         ttk.Checkbutton(options_frame, text="Include hash generation method in TXT report", variable=self.include_generation_method_var).grid(row=5, column=0, sticky="w")
         ttk.Checkbutton(options_frame, text="Include hashing explanation in TXT report", variable=self.include_explanation_var).grid(row=6, column=0, sticky="w")
@@ -347,20 +263,28 @@ class HashManifestApp:
         self.review_button = ttk.Button(action_frame, text="Review Manifest", command=self.review_manifest, state="disabled")
         self.review_button.grid(row=0, column=1, padx=4)
 
-        ttk.Button(action_frame, text="Clear Manifest", command=self.clear_manifest).grid(row=0, column=2, padx=4)
+        self.review_verification_button = ttk.Button(action_frame, text="Review Verification", command=self.review_verification, state="disabled")
+        self.review_verification_button.grid(row=0, column=2, padx=4)
+
+        ttk.Button(action_frame, text="Clear Manifest", command=self.clear_manifest).grid(row=0, column=3, padx=4)
+
+        utilities_frame = ttk.LabelFrame(parent, text="Manifest Utilities", padding=10)
+        utilities_frame.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+        utilities_frame.columnconfigure(1, weight=1)
+
+        ttk.Button(utilities_frame, text="Load Prior Manifest JSON", command=self.load_prior_manifest).grid(row=0, column=0, sticky="w", padx=4)
+        ttk.Button(utilities_frame, text="Clear Prior Manifest", command=self.clear_prior_manifest).grid(row=0, column=1, sticky="w", padx=4)
+        ttk.Button(utilities_frame, text="Compare Two Manifests", command=self.open_compare_window).grid(row=0, column=2, sticky="e", padx=4)
+
+        self.verification_manifest_var = tk.StringVar(value="No prior manifest loaded.")
+        ttk.Label(utilities_frame, textvariable=self.verification_manifest_var, style="Muted.TLabel").grid(row=1, column=0, columnspan=3, sticky="w", pady=(8, 0))
 
         progress_frame = ttk.LabelFrame(parent, text="Progress", padding=10)
-        progress_frame.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+        progress_frame.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(10, 0))
         progress_frame.columnconfigure(0, weight=1)
 
         self.progress_var = tk.DoubleVar(value=0)
-        self.progress_bar = ttk.Progressbar(
-            progress_frame,
-            variable=self.progress_var,
-            maximum=100,
-            style="Horizontal.TProgressbar"
-        )
-        self.progress_bar.grid(row=0, column=0, sticky="ew")
+        ttk.Progressbar(progress_frame, variable=self.progress_var, maximum=100, style="Horizontal.TProgressbar").grid(row=0, column=0, sticky="ew")
 
         self.status_var = tk.StringVar(value="Ready.")
         ttk.Label(progress_frame, textvariable=self.status_var).grid(row=1, column=0, sticky="w", pady=(6, 0))
@@ -378,44 +302,46 @@ class HashManifestApp:
         results_frame.rowconfigure(0, weight=1)
 
         columns = ("file_name", "size", "status", "md5", "sha1", "sha256", "path")
-
         self.results_tree = ttk.Treeview(results_frame, columns=columns, show="headings", height=16)
 
-        self.results_tree.heading("file_name", text="File Name")
-        self.results_tree.heading("size", text="Size")
-        self.results_tree.heading("status", text="Status")
-        self.results_tree.heading("md5", text="MD5")
-        self.results_tree.heading("sha1", text="SHA-1")
-        self.results_tree.heading("sha256", text="SHA-256")
-        self.results_tree.heading("path", text="Path")
+        headings = {
+            "file_name": "File Name",
+            "size": "Size",
+            "status": "Status",
+            "md5": "MD5",
+            "sha1": "SHA-1",
+            "sha256": "SHA-256",
+            "path": "Path"
+        }
 
-        self.results_tree.column("file_name", width=180, anchor="w")
-        self.results_tree.column("size", width=90, anchor="w")
-        self.results_tree.column("status", width=90, anchor="w")
-        self.results_tree.column("md5", width=220, anchor="w")
-        self.results_tree.column("sha1", width=220, anchor="w")
-        self.results_tree.column("sha256", width=320, anchor="w")
-        self.results_tree.column("path", width=420, anchor="w")
+        widths = {
+            "file_name": 180,
+            "size": 90,
+            "status": 90,
+            "md5": 220,
+            "sha1": 220,
+            "sha256": 320,
+            "path": 420
+        }
+
+        for column in columns:
+            self.results_tree.heading(column, text=headings[column])
+            self.results_tree.column(column, width=widths[column], anchor="w")
 
         y_scroll = ttk.Scrollbar(results_frame, orient="vertical", command=self.results_tree.yview)
         x_scroll = ttk.Scrollbar(results_frame, orient="horizontal", command=self.results_tree.xview)
 
         self.results_tree.configure(yscrollcommand=y_scroll.set, xscrollcommand=x_scroll.set)
-
         self.results_tree.grid(row=0, column=0, sticky="nsew")
         y_scroll.grid(row=0, column=1, sticky="ns")
         x_scroll.grid(row=1, column=0, sticky="ew")
 
     def add_labeled_entry(self, parent, label_text, variable, row):
-        label = ttk.Label(parent, text=label_text)
-        label.grid(row=row, column=0, sticky="w", pady=4)
-
-        entry = ttk.Entry(parent, textvariable=variable)
-        entry.grid(row=row, column=1, sticky="ew", pady=4)
+        ttk.Label(parent, text=label_text).grid(row=row, column=0, sticky="w", pady=4)
+        ttk.Entry(parent, textvariable=variable).grid(row=row, column=1, sticky="ew", pady=4)
 
     def add_labeled_technician_combo(self, parent, label_text, variable, row):
-        label = ttk.Label(parent, text=label_text)
-        label.grid(row=row, column=0, sticky="w", pady=4)
+        ttk.Label(parent, text=label_text).grid(row=row, column=0, sticky="w", pady=4)
 
         self.technician_combo = ttk.Combobox(
             parent,
@@ -493,6 +419,63 @@ class HashManifestApp:
 
         self.update_selection_summary()
 
+    def load_prior_manifest(self):
+        path = filedialog.askopenfilename(
+            title="Select Prior Manifest JSON",
+            filetypes=[
+                ("JSON Files", "*.json"),
+                ("All Files", "*.*")
+            ]
+        )
+
+        if not path:
+            return
+
+        try:
+            manifest = load_manifest_json(path)
+        except Exception as e:
+            messagebox.showerror("Load Manifest Error", f"Could not load prior manifest.\n\nDetails:\n{e}")
+            return
+
+        self.verification_manifest = manifest
+        self.verification_manifest_path = path
+
+        case_info = manifest.get("case_info", {})
+        case_number = case_info.get("case_number", "")
+        source_description = case_info.get("source_description", "")
+
+        label = f"Loaded prior manifest: {path}"
+
+        if case_number or source_description:
+            label += f" | Case: {case_number} | Source: {source_description}"
+
+        self.verification_manifest_var.set(label)
+
+        algorithms = get_manifest_algorithms(manifest)
+
+        if algorithms:
+            self.md5_var.set("MD5" in algorithms)
+            self.sha1_var.set("SHA-1" in algorithms)
+            self.sha256_var.set("SHA-256" in algorithms)
+
+        if self.hash_results:
+            self.review_verification_button.config(state="normal")
+
+        messagebox.showinfo(
+            "Prior Manifest Loaded",
+            "Prior manifest loaded successfully.\n\n"
+            "Hash the current files/folders, then click Review Verification."
+        )
+
+    def clear_prior_manifest(self):
+        self.verification_manifest = None
+        self.verification_manifest_path = ""
+        self.verification_manifest_var.set("No prior manifest loaded.")
+        self.review_verification_button.config(state="disabled")
+
+    def open_compare_window(self):
+        CompareWindow(self)
+
     def view_selected_items(self):
         if not self.selected_files and not self.selected_folders:
             messagebox.showinfo("Selected Items", "No files or folders selected.")
@@ -549,28 +532,19 @@ class HashManifestApp:
         self.update_selection_summary()
 
     def update_selection_summary(self):
-        file_count = len(self.selected_files)
-        folder_count = len(self.selected_folders)
-
-        self.selection_summary_var.set(f"Selected files: {file_count} | Selected folders: {folder_count}")
+        self.selection_summary_var.set(
+            f"Selected files: {len(self.selected_files)} | Selected folders: {len(self.selected_folders)}"
+        )
 
     def start_hashing(self):
         if self.hashing_active:
             return
 
         algorithms = self.get_selected_algorithms()
-
-        errors, warnings = validate_hash_request(
-            self.selected_files,
-            self.selected_folders,
-            algorithms
-        )
+        errors, warnings = validate_hash_request(self.selected_files, self.selected_folders, algorithms)
 
         if errors:
-            messagebox.showerror(
-                "Hashing Validation Error",
-                "Fix the following before hashing:\n\n" + "\n".join(errors)
-            )
+            messagebox.showerror("Hashing Validation Error", "Fix the following before hashing:\n\n" + "\n".join(errors))
             return
 
         files = collect_files(
@@ -593,15 +567,12 @@ class HashManifestApp:
         self.hashing_active = True
         self.hash_button.config(state="disabled")
         self.review_button.config(state="disabled")
+        self.review_verification_button.config(state="disabled")
 
         self.status_var.set(f"Hashing 0 of {len(files)} files...")
         self.current_file_var.set("Preparing...")
 
-        worker = threading.Thread(
-            target=self.hashing_worker,
-            args=(files, algorithms),
-            daemon=True
-        )
+        worker = threading.Thread(target=self.hashing_worker, args=(files, algorithms), daemon=True)
         worker.start()
 
     def hashing_worker(self, files, algorithms):
@@ -630,12 +601,8 @@ class HashManifestApp:
                 message_type, payload = self.progress_queue.get_nowait()
 
                 if message_type == "status":
-                    current_index = payload.get("current_index", 0)
-                    total_files = payload.get("total_files", 0)
-                    current_file = payload.get("current_file", "")
-
-                    self.status_var.set(f"Hashing file {current_index} of {total_files}")
-                    self.current_file_var.set(f"Current file: {current_file}")
+                    self.status_var.set(f"Hashing file {payload.get('current_index', 0)} of {payload.get('total_files', 0)}")
+                    self.current_file_var.set(f"Current file: {payload.get('current_file', '')}")
 
                 elif message_type == "progress":
                     self.processed_bytes += payload
@@ -657,12 +624,16 @@ class HashManifestApp:
                     self.hash_button.config(state="normal")
                     self.review_button.config(state="normal")
 
-                    messagebox.showinfo("Hashing Complete", "Hash manifest results are ready to review.")
+                    if self.verification_manifest:
+                        self.review_verification_button.config(state="normal")
+
+                    messagebox.showinfo("Hashing Complete", "Hash results are ready to review.")
 
                 elif message_type == "error":
                     self.hashing_active = False
                     self.hash_button.config(state="normal")
                     self.review_button.config(state="disabled")
+                    self.review_verification_button.config(state="disabled")
                     self.status_var.set("Hashing failed.")
                     self.current_file_var.set("")
                     messagebox.showerror("Hashing Error", payload)
@@ -718,11 +689,9 @@ class HashManifestApp:
         summary = summarize_hash_results(files)
 
         lines = []
-
         lines.append("HASH MANIFEST REVIEW")
         lines.append("=" * 80)
         lines.append("")
-
         lines.append("CASE INFORMATION")
         lines.append("-" * 80)
         lines.append(f"Case Number: {case_info.get('case_number', '')}")
@@ -730,23 +699,12 @@ class HashManifestApp:
         lines.append(f"Technician: {case_info.get('technician', '')}")
         lines.append(f"Source Description: {case_info.get('source_description', '')}")
         lines.append("")
-
-        lines.append("SELECTED INPUT SUMMARY")
-        lines.append("-" * 80)
-        lines.append(f"Selected Files: {len(self.selected_files)}")
-        lines.append(f"Selected Folders: {len(self.selected_folders)}")
-        lines.append(f"Recursive Folder Selection: {'Yes' if hash_settings.get('recursive') else 'No'}")
-        lines.append(f"Total Files Found: {summary['total_files']}")
-        lines.append("")
-
         lines.append("HASH SETTINGS")
         lines.append("-" * 80)
         algorithms = hash_settings.get("algorithms", [])
         lines.append(f"Algorithms: {', '.join(algorithms) if algorithms else 'None'}")
-        lines.append(f"Include Hash Generation Method: {'Yes' if hash_settings.get('include_hash_generation_method') else 'No'}")
-        lines.append(f"Include Hashing Explanation: {'Yes' if hash_settings.get('include_hashing_explanation') else 'No'}")
+        lines.append(f"Recursive Folder Selection: {'Yes' if hash_settings.get('recursive') else 'No'}")
         lines.append("")
-
         lines.append("FILE SUMMARY")
         lines.append("-" * 80)
         lines.append(f"Total Files: {summary['total_files']}")
@@ -782,20 +740,40 @@ class HashManifestApp:
         errors, warnings = validate_manifest_for_export(manifest)
 
         if errors:
-            messagebox.showerror(
-                "Manifest Validation Error",
-                "Fix the following before export:\n\n" + "\n".join(errors)
-            )
+            messagebox.showerror("Manifest Validation Error", "Fix the following before export:\n\n" + "\n".join(errors))
             return
 
         ReviewWindow(self, manifest, warnings)
+
+    def review_verification(self):
+        if self.hashing_active:
+            messagebox.showwarning("Hashing Active", "Wait for hashing to finish before reviewing verification.")
+            return
+
+        if not self.verification_manifest:
+            messagebox.showerror("No Prior Manifest", "Load a prior manifest JSON before reviewing verification.")
+            return
+
+        if not self.hash_results:
+            messagebox.showerror("No Current Hash Results", "Hash current files before reviewing verification.")
+            return
+
+        notes = self.notes_text.get("1.0", "end").strip()
+
+        report = build_verification_report(
+            original_manifest=self.verification_manifest,
+            current_files=self.hash_results,
+            technician=self.technician_var.get(),
+            notes=notes
+        )
+
+        VerificationReviewWindow(self, report)
 
     def export_reviewed_manifest(self, manifest, review_window):
         try:
             txt_path, csv_path, docx_path, json_path = save_manifest_outputs(manifest, self.settings)
 
             review_window.destroy()
-
             self.status_var.set("Manifest exported successfully.")
 
             messagebox.showinfo(
@@ -807,24 +785,46 @@ class HashManifestApp:
                 f"JSON:\n{json_path}"
             )
 
-        except PermissionError as e:
-            messagebox.showerror(
-                "Export Error",
-                "The manifest could not be exported because a file may be open or locked.\n\n"
-                f"Details:\n{e}"
-            )
+        except Exception as e:
+            messagebox.showerror("Export Error", f"The manifest could not be exported.\n\nDetails:\n{e}")
 
-        except OSError as e:
-            messagebox.showerror(
-                "Export Error",
-                f"The manifest could not be exported.\n\nDetails:\n{e}"
+    def export_verification_report(self, report, review_window):
+        try:
+            txt_path, csv_path, docx_path, json_path = save_verification_outputs(report, self.settings)
+
+            review_window.destroy()
+            self.status_var.set("Verification report exported successfully.")
+
+            messagebox.showinfo(
+                "Verification Exported",
+                "Verification report exported successfully.\n\n"
+                f"TXT:\n{txt_path}\n\n"
+                f"CSV:\n{csv_path}\n\n"
+                f"DOCX:\n{docx_path}\n\n"
+                f"JSON:\n{json_path}"
             )
 
         except Exception as e:
-            messagebox.showerror(
-                "Export Error",
-                f"The manifest could not be exported.\n\nDetails:\n{e}"
+            messagebox.showerror("Verification Export Error", f"The verification report could not be exported.\n\nDetails:\n{e}")
+
+    def export_compare_report(self, report, review_window):
+        try:
+            txt_path, csv_path, docx_path, json_path = save_compare_outputs(report, self.settings)
+
+            review_window.destroy()
+            self.status_var.set("Compare report exported successfully.")
+
+            messagebox.showinfo(
+                "Compare Exported",
+                "Compare report exported successfully.\n\n"
+                f"TXT:\n{txt_path}\n\n"
+                f"CSV:\n{csv_path}\n\n"
+                f"DOCX:\n{docx_path}\n\n"
+                f"JSON:\n{json_path}"
             )
+
+        except Exception as e:
+            messagebox.showerror("Compare Export Error", f"The compare report could not be exported.\n\nDetails:\n{e}")
 
     def clear_manifest(self):
         if self.hashing_active:
@@ -847,6 +847,7 @@ class HashManifestApp:
         self.status_var.set("Ready.")
         self.current_file_var.set("")
         self.review_button.config(state="disabled")
+        self.review_verification_button.config(state="disabled")
 
         self.clear_results_table()
         self.update_selection_summary()
@@ -909,11 +910,263 @@ class ReviewWindow:
             command=lambda: self.app.export_reviewed_manifest(self.manifest, self.window)
         ).pack(side="right", padx=4)
 
+        ttk.Button(button_frame, text="Cancel", command=self.window.destroy).pack(side="right", padx=4)
+
+
+class VerificationReviewWindow:
+    def __init__(self, app, report):
+        self.app = app
+        self.report = report
+
+        self.window = tk.Toplevel(app.root)
+        self.window.title("Review Verification")
+        self.window.geometry("950x650")
+        self.window.transient(app.root)
+        self.window.grab_set()
+
+        colors = getattr(app, "theme_colors", {})
+        if colors:
+            self.window.configure(bg=colors["bg"])
+
+        self.build_window()
+
+    def build_window(self):
+        frame = ttk.Frame(self.window, padding=10)
+        frame.pack(fill="both", expand=True)
+
+        text_box = tk.Text(frame, wrap="word")
+        text_box.pack(fill="both", expand=True)
+
+        self.app.style_text_widget(text_box)
+
+        summary = self.report.get("summary", {})
+        original = self.report.get("original_manifest", {})
+        case_info = original.get("case_info", {})
+
+        lines = []
+        lines.append("HASH MANIFEST VERIFICATION REVIEW")
+        lines.append("=" * 80)
+        lines.append("")
+        lines.append("ORIGINAL MANIFEST")
+        lines.append("-" * 80)
+        lines.append(f"Case Number: {case_info.get('case_number', '')}")
+        lines.append(f"Agency Case Number: {case_info.get('agency_case_number', '')}")
+        lines.append(f"Source Description: {case_info.get('source_description', '')}")
+        lines.append(f"Original Created At: {original.get('created_at', '')}")
+        lines.append("")
+        lines.append("VERIFICATION SUMMARY")
+        lines.append("-" * 80)
+        lines.append(f"Total Results: {summary.get('total_results', 0)}")
+        lines.append(f"Matched: {summary.get('matched', 0)}")
+        lines.append(f"Hash Mismatch: {summary.get('hash_mismatch', 0)}")
+        lines.append(f"Missing From Current Selection: {summary.get('missing_from_current_selection', 0)}")
+        lines.append(f"New File Not In Original Manifest: {summary.get('new_file_not_in_original_manifest', 0)}")
+        lines.append(f"Errors: {summary.get('errors', 0)}")
+        lines.append("")
+        lines.append("Click Confirm Export to write verification TXT, CSV, DOCX, and JSON outputs.")
+
+        text_box.insert("1.0", "\n".join(lines))
+        text_box.configure(state="disabled")
+
+        button_frame = ttk.Frame(self.window, padding=10)
+        button_frame.pack(fill="x")
+
         ttk.Button(
             button_frame,
-            text="Cancel",
-            command=self.window.destroy
+            text="Confirm Export",
+            command=lambda: self.app.export_verification_report(self.report, self.window)
         ).pack(side="right", padx=4)
+
+        ttk.Button(button_frame, text="Cancel", command=self.window.destroy).pack(side="right", padx=4)
+
+
+class CompareWindow:
+    def __init__(self, app):
+        self.app = app
+        self.manifest_a = None
+        self.manifest_b = None
+        self.manifest_a_path = ""
+        self.manifest_b_path = ""
+
+        self.window = tk.Toplevel(app.root)
+        self.window.title("Compare Two Manifests")
+        self.window.geometry("900x480")
+        self.window.transient(app.root)
+        self.window.grab_set()
+
+        colors = getattr(app, "theme_colors", {})
+        if colors:
+            self.window.configure(bg=colors["bg"])
+
+        self.build_window()
+
+    def build_window(self):
+        frame = ttk.Frame(self.window, padding=10)
+        frame.pack(fill="both", expand=True)
+        frame.columnconfigure(1, weight=1)
+
+        ttk.Label(frame, text="Manifest A").grid(row=0, column=0, sticky="w", pady=5)
+        self.manifest_a_var = tk.StringVar(value="No Manifest A loaded.")
+        ttk.Label(frame, textvariable=self.manifest_a_var, style="Muted.TLabel", wraplength=680).grid(row=0, column=1, sticky="ew", pady=5)
+        ttk.Button(frame, text="Load Manifest A", command=self.load_manifest_a).grid(row=0, column=2, padx=4, pady=5)
+
+        ttk.Label(frame, text="Manifest B").grid(row=1, column=0, sticky="w", pady=5)
+        self.manifest_b_var = tk.StringVar(value="No Manifest B loaded.")
+        ttk.Label(frame, textvariable=self.manifest_b_var, style="Muted.TLabel", wraplength=680).grid(row=1, column=1, sticky="ew", pady=5)
+        ttk.Button(frame, text="Load Manifest B", command=self.load_manifest_b).grid(row=1, column=2, padx=4, pady=5)
+
+        ttk.Label(frame, text="Compare Notes").grid(row=2, column=0, sticky="nw", pady=8)
+
+        self.notes_text = tk.Text(frame, height=10, width=70)
+        self.notes_text.grid(row=2, column=1, columnspan=2, sticky="nsew", pady=8)
+        self.app.style_text_widget(self.notes_text)
+
+        note = (
+            "Compare Mode compares two saved manifest JSON files. It does not hash current files. "
+            "Use Verification Mode when you want to hash current files and compare them to a prior manifest."
+        )
+        ttk.Label(frame, text=note, wraplength=820).grid(row=3, column=0, columnspan=3, sticky="w", pady=(12, 0))
+
+        button_frame = ttk.Frame(self.window, padding=10)
+        button_frame.pack(fill="x")
+
+        ttk.Button(button_frame, text="Review Compare", command=self.review_compare).pack(side="right", padx=4)
+        ttk.Button(button_frame, text="Cancel", command=self.window.destroy).pack(side="right", padx=4)
+
+    def load_manifest_a(self):
+        path = filedialog.askopenfilename(
+            title="Select Manifest A JSON",
+            filetypes=[
+                ("JSON Files", "*.json"),
+                ("All Files", "*.*")
+            ]
+        )
+
+        if not path:
+            return
+
+        try:
+            self.manifest_a = load_compare_manifest_json(path)
+            self.manifest_a_path = path
+            self.manifest_a_var.set(path)
+        except Exception as e:
+            messagebox.showerror("Load Manifest A Error", f"Could not load Manifest A.\n\nDetails:\n{e}")
+
+    def load_manifest_b(self):
+        path = filedialog.askopenfilename(
+            title="Select Manifest B JSON",
+            filetypes=[
+                ("JSON Files", "*.json"),
+                ("All Files", "*.*")
+            ]
+        )
+
+        if not path:
+            return
+
+        try:
+            self.manifest_b = load_compare_manifest_json(path)
+            self.manifest_b_path = path
+            self.manifest_b_var.set(path)
+        except Exception as e:
+            messagebox.showerror("Load Manifest B Error", f"Could not load Manifest B.\n\nDetails:\n{e}")
+
+    def review_compare(self):
+        if not self.manifest_a:
+            messagebox.showerror("Missing Manifest A", "Load Manifest A before comparing.")
+            return
+
+        if not self.manifest_b:
+            messagebox.showerror("Missing Manifest B", "Load Manifest B before comparing.")
+            return
+
+        notes = self.notes_text.get("1.0", "end").strip()
+
+        report = build_compare_report(
+            manifest_a=self.manifest_a,
+            manifest_b=self.manifest_b,
+            manifest_a_path=self.manifest_a_path,
+            manifest_b_path=self.manifest_b_path,
+            technician=self.app.technician_var.get(),
+            notes=notes
+        )
+
+        CompareReviewWindow(self.app, report)
+        self.window.destroy()
+
+
+class CompareReviewWindow:
+    def __init__(self, app, report):
+        self.app = app
+        self.report = report
+
+        self.window = tk.Toplevel(app.root)
+        self.window.title("Review Manifest Compare")
+        self.window.geometry("950x650")
+        self.window.transient(app.root)
+        self.window.grab_set()
+
+        colors = getattr(app, "theme_colors", {})
+        if colors:
+            self.window.configure(bg=colors["bg"])
+
+        self.build_window()
+
+    def build_window(self):
+        frame = ttk.Frame(self.window, padding=10)
+        frame.pack(fill="both", expand=True)
+
+        text_box = tk.Text(frame, wrap="word")
+        text_box.pack(fill="both", expand=True)
+
+        self.app.style_text_widget(text_box)
+
+        summary = self.report.get("summary", {})
+        manifest_a = self.report.get("manifest_a", {})
+        manifest_b = self.report.get("manifest_b", {})
+        case_a = manifest_a.get("case_info", {})
+        case_b = manifest_b.get("case_info", {})
+
+        lines = []
+        lines.append("HASH MANIFEST COMPARE REVIEW")
+        lines.append("=" * 80)
+        lines.append("")
+        lines.append("MANIFEST A")
+        lines.append("-" * 80)
+        lines.append(f"Case Number: {case_a.get('case_number', '')}")
+        lines.append(f"Source Description: {case_a.get('source_description', '')}")
+        lines.append(f"Created At: {manifest_a.get('created_at', '')}")
+        lines.append("")
+        lines.append("MANIFEST B")
+        lines.append("-" * 80)
+        lines.append(f"Case Number: {case_b.get('case_number', '')}")
+        lines.append(f"Source Description: {case_b.get('source_description', '')}")
+        lines.append(f"Created At: {manifest_b.get('created_at', '')}")
+        lines.append("")
+        lines.append("COMPARE SUMMARY")
+        lines.append("-" * 80)
+        lines.append(f"Total Results: {summary.get('total_results', 0)}")
+        lines.append(f"Matched: {summary.get('matched', 0)}")
+        lines.append(f"Hash Mismatch: {summary.get('hash_mismatch', 0)}")
+        lines.append(f"Only in Manifest A: {summary.get('only_in_manifest_a', 0)}")
+        lines.append(f"Only in Manifest B: {summary.get('only_in_manifest_b', 0)}")
+        lines.append(f"Errors: {summary.get('errors', 0)}")
+        lines.append("")
+        lines.append("Click Confirm Export to write compare TXT, CSV, DOCX, and JSON outputs.")
+
+        text_box.insert("1.0", "\n".join(lines))
+        text_box.configure(state="disabled")
+
+        button_frame = ttk.Frame(self.window, padding=10)
+        button_frame.pack(fill="x")
+
+        ttk.Button(
+            button_frame,
+            text="Confirm Export",
+            command=lambda: self.app.export_compare_report(self.report, self.window)
+        ).pack(side="right", padx=4)
+
+        ttk.Button(button_frame, text="Cancel", command=self.window.destroy).pack(side="right", padx=4)
 
 
 class SettingsWindow:
@@ -965,26 +1218,12 @@ class SettingsWindow:
 
         ttk.Label(frame, text="Theme").grid(row=0, column=0, sticky="w", pady=5)
 
-        theme_combo = ttk.Combobox(
+        ttk.Combobox(
             frame,
             textvariable=self.theme_var,
             values=["dark", "light"],
             state="readonly"
-        )
-        theme_combo.grid(row=0, column=1, sticky="ew", pady=5)
-
-        note = (
-            "Dark mode uses the ForensicsByte black and gold color scheme.\n"
-            "Light mode is provided for readability, printing environments, and user preference."
-        )
-
-        ttk.Label(frame, text=note, wraplength=680).grid(
-            row=1,
-            column=0,
-            columnspan=2,
-            sticky="w",
-            pady=(12, 0)
-        )
+        ).grid(row=0, column=1, sticky="ew", pady=5)
 
     def build_department_tab(self, notebook):
         frame = ttk.Frame(notebook, padding=10)
@@ -1015,17 +1254,11 @@ class SettingsWindow:
         self.technicians_text.grid(row=3, column=1, sticky="nsew", pady=5)
         self.app.style_text_widget(self.technicians_text)
 
-        note = (
-            "Enter one technician per line. These names will appear in the Technician dropdown "
-            "on the main screen. The dropdown also allows manual entry."
-        )
-        ttk.Label(frame, text=note, wraplength=680).grid(
-            row=4,
-            column=0,
-            columnspan=2,
-            sticky="w",
-            pady=(12, 0)
-        )
+        ttk.Label(
+            frame,
+            text="Enter one technician per line. These names appear in the Technician dropdown.",
+            wraplength=680
+        ).grid(row=4, column=0, columnspan=2, sticky="w", pady=(12, 0))
 
     def build_output_tab(self, notebook):
         frame = ttk.Frame(notebook, padding=10)
@@ -1056,20 +1289,6 @@ class SettingsWindow:
         ttk.Button(frame, text="Browse", command=self.browse_patch_image).grid(row=0, column=2, sticky="e", padx=4)
         ttk.Button(frame, text="Clear", command=lambda: self.patch_image_path_var.set("")).grid(row=0, column=3, sticky="e", padx=4)
 
-        note = (
-            "Recommended format: PNG\n"
-            "Supported formats: PNG, JPG, JPEG\n\n"
-            "The image path is stored for report generation support."
-        )
-
-        ttk.Label(frame, text=note, wraplength=680).grid(
-            row=1,
-            column=0,
-            columnspan=4,
-            sticky="w",
-            pady=(12, 0)
-        )
-
     def build_hash_defaults_tab(self, notebook):
         frame = ttk.Frame(notebook, padding=10)
         notebook.add(frame, text="Hash Defaults")
@@ -1098,22 +1317,9 @@ class SettingsWindow:
             variable=self.default_include_explanation_var
         ).grid(row=5, column=0, sticky="w", pady=4)
 
-        note = (
-            "Recommended default: MD5 and SHA-256 enabled, SHA-1 disabled.\n\n"
-            "SHA-1 is included as an option for compatibility with older workflows, "
-            "but it is disabled by default.\n\n"
-            "Hash Generation Method explains what mechanism created the hashes. "
-            "Hashing Explanation explains what hash values are."
-        )
-
-        ttk.Label(frame, text=note, wraplength=680).grid(row=6, column=0, sticky="w", pady=(12, 0))
-
     def add_labeled_entry(self, parent, label_text, variable, row):
-        label = ttk.Label(parent, text=label_text)
-        label.grid(row=row, column=0, sticky="w", pady=5)
-
-        entry = ttk.Entry(parent, textvariable=variable)
-        entry.grid(row=row, column=1, sticky="ew", pady=5)
+        ttk.Label(parent, text=label_text).grid(row=row, column=0, sticky="w", pady=5)
+        ttk.Entry(parent, textvariable=variable).grid(row=row, column=1, sticky="ew", pady=5)
 
     def load_values(self):
         appearance = self.settings.get("appearance", {})
