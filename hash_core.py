@@ -8,15 +8,13 @@ from typing import Callable, Dict, Iterable, List, Optional, Tuple
 from docx_exporter import save_docx_manifest
 from report_templates import HASH_GENERATION_METHOD, HASHING_EXPLANATION
 from settings_service import APP_NAME, APP_VERSION, ensure_directories
+from xlsx_exporter import save_manifest_xlsx
 
 
 CHUNK_SIZE = 1024 * 1024  # 1 MB
 
 
 def safe_filename(value: str, fallback: str = "manifest") -> str:
-    """
-    Creates a filesystem-safe filename component.
-    """
     value = (value or "").strip()
 
     if not value:
@@ -36,9 +34,6 @@ def safe_filename(value: str, fallback: str = "manifest") -> str:
 
 
 def get_file_modified_time(path: Path) -> str:
-    """
-    Returns file modified time as ISO-like local timestamp.
-    """
     try:
         timestamp = path.stat().st_mtime
         return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
@@ -51,11 +46,6 @@ def collect_files(
     selected_folders: Iterable[str],
     recursive: bool
 ) -> List[Path]:
-    """
-    Collects selected files and files from selected folders.
-
-    Duplicate file paths are removed while preserving order.
-    """
     collected = []
     seen = set()
 
@@ -89,9 +79,6 @@ def collect_files(
 
 
 def get_total_size_bytes(files: List[Path]) -> int:
-    """
-    Returns the total size in bytes for all accessible files.
-    """
     total = 0
 
     for path in files:
@@ -104,9 +91,6 @@ def get_total_size_bytes(files: List[Path]) -> int:
 
 
 def normalize_algorithms(algorithms: Dict[str, bool]) -> Dict[str, bool]:
-    """
-    Ensures expected algorithm keys exist.
-    """
     return {
         "md5": bool(algorithms.get("md5", False)),
         "sha1": bool(algorithms.get("sha1", False)),
@@ -115,9 +99,6 @@ def normalize_algorithms(algorithms: Dict[str, bool]) -> Dict[str, bool]:
 
 
 def get_selected_algorithm_names(algorithms: Dict[str, bool]) -> List[str]:
-    """
-    Returns display names for selected algorithms.
-    """
     algorithms = normalize_algorithms(algorithms)
 
     selected = []
@@ -137,11 +118,6 @@ def hash_file(
     algorithms: Dict[str, bool],
     progress_callback: Optional[Callable[[int], None]] = None
 ) -> Dict[str, object]:
-    """
-    Hashes one file using the selected algorithms.
-
-    The file is read once, and all selected hash algorithms are updated during the same read loop.
-    """
     algorithms = normalize_algorithms(algorithms)
 
     hashers = {}
@@ -206,9 +182,6 @@ def hash_files(
     status_callback: Optional[Callable[[Dict[str, object]], None]] = None,
     progress_callback: Optional[Callable[[int], None]] = None
 ) -> List[Dict[str, object]]:
-    """
-    Hashes multiple files and returns file records.
-    """
     results = []
     total_files = len(files)
 
@@ -231,17 +204,17 @@ def build_manifest(
     case_number: str,
     agency_case_number: str,
     technician: str,
+    reviewed_by: str,
     source_description: str,
+    exhibit_reference: str,
     recursive: bool,
     algorithms: Dict[str, bool],
     include_hashing_explanation: bool,
     include_hash_generation_method: bool,
+    include_signature_block: bool,
     notes: str,
     files: List[Dict[str, object]]
 ) -> Dict[str, object]:
-    """
-    Builds the full manifest object for JSON and report exports.
-    """
     selected_algorithm_names = get_selected_algorithm_names(algorithms)
     summary = calculate_file_summary(files)
 
@@ -257,13 +230,18 @@ def build_manifest(
             "case_number": case_number.strip(),
             "agency_case_number": agency_case_number.strip(),
             "technician": technician.strip(),
-            "source_description": source_description.strip()
+            "reviewed_by": reviewed_by.strip(),
+            "source_description": source_description.strip(),
+            "exhibit_reference": exhibit_reference.strip()
         },
         "hash_settings": {
             "algorithms": selected_algorithm_names,
             "recursive": bool(recursive),
             "include_hashing_explanation": bool(include_hashing_explanation),
             "include_hash_generation_method": bool(include_hash_generation_method)
+        },
+        "report_options": {
+            "include_signature_block": bool(include_signature_block)
         },
         "hash_generation_method": {
             "implementation": "Python hashlib",
@@ -281,9 +259,6 @@ def build_manifest(
 
 
 def calculate_file_summary(files: List[Dict[str, object]]) -> Dict[str, int]:
-    """
-    Calculates summary counts for manifest output.
-    """
     total_files = len(files)
     completed_count = 0
     error_count = 0
@@ -311,9 +286,6 @@ def calculate_file_summary(files: List[Dict[str, object]]) -> Dict[str, int]:
 
 
 def format_bytes(size_bytes: Optional[int]) -> str:
-    """
-    Human-readable file size.
-    """
     if size_bytes is None:
         return "Unknown"
 
@@ -331,13 +303,33 @@ def format_bytes(size_bytes: Optional[int]) -> str:
     return f"{size_bytes} bytes"
 
 
+def get_current_date_for_signature() -> str:
+    return datetime.now().strftime("%Y-%m-%d")
+
+
+def build_txt_signature_block(manifest: Dict[str, object]) -> List[str]:
+    case_info = manifest.get("case_info", {})
+
+    lines = []
+    lines.append("REPORT REVIEW / SIGNATURE")
+    lines.append("-" * 80)
+    lines.append(f"Technician: {case_info.get('technician', '')}")
+    lines.append(f"Reviewed By: {case_info.get('reviewed_by', '')}")
+    lines.append(f"Date: {get_current_date_for_signature()}")
+    lines.append("")
+    lines.append("Technician Signature: _______________________________")
+    lines.append("")
+    lines.append("Reviewer Signature: _______________________________")
+    lines.append("")
+
+    return lines
+
+
 def build_txt_manifest(manifest: Dict[str, object]) -> str:
-    """
-    Builds a plain text hash manifest report.
-    """
     department = manifest.get("department", {})
     case_info = manifest.get("case_info", {})
     hash_settings = manifest.get("hash_settings", {})
+    report_options = manifest.get("report_options", {})
     file_summary = manifest.get("file_summary", {})
     files = manifest.get("files", [])
 
@@ -368,7 +360,9 @@ def build_txt_manifest(manifest: Dict[str, object]) -> str:
     lines.append("-" * 80)
     lines.append(f"Case Number: {case_info.get('case_number', '')}")
     lines.append(f"Agency Case Number: {case_info.get('agency_case_number', '')}")
+    lines.append(f"Exhibit / Item Reference: {case_info.get('exhibit_reference', '')}")
     lines.append(f"Technician: {case_info.get('technician', '')}")
+    lines.append(f"Reviewed By: {case_info.get('reviewed_by', '')}")
     lines.append(f"Source Description: {case_info.get('source_description', '')}")
     lines.append("")
 
@@ -377,6 +371,7 @@ def build_txt_manifest(manifest: Dict[str, object]) -> str:
     algorithms = hash_settings.get("algorithms", [])
     lines.append(f"Algorithms: {', '.join(algorithms) if algorithms else 'None selected'}")
     lines.append(f"Recursive Folder Selection: {'Yes' if hash_settings.get('recursive') else 'No'}")
+    lines.append(f"Signature Block Included: {'Yes' if report_options.get('include_signature_block') else 'No'}")
     lines.append("")
 
     if hash_settings.get("include_hash_generation_method"):
@@ -428,6 +423,9 @@ def build_txt_manifest(manifest: Dict[str, object]) -> str:
         lines.append(f"SHA-256: {record.get('sha256') or 'Not calculated'}")
         lines.append("")
 
+    if report_options.get("include_signature_block"):
+        lines.extend(build_txt_signature_block(manifest))
+
     lines.append("=" * 80)
     lines.append("End of Hash Manifest")
     lines.append("=" * 80)
@@ -438,10 +436,7 @@ def build_txt_manifest(manifest: Dict[str, object]) -> str:
 def save_manifest_outputs(
     manifest: Dict[str, object],
     settings: Dict[str, object]
-) -> Tuple[Path, Path, Path, Path]:
-    """
-    Saves TXT, CSV, DOCX, and JSON outputs.
-    """
+) -> Tuple[Path, Path, Path, Path, Path]:
     paths = ensure_directories(settings)
 
     case_number = manifest.get("case_info", {}).get("case_number", "")
@@ -455,6 +450,7 @@ def save_manifest_outputs(
     txt_path = paths["reports_dir"] / f"{base_filename}.txt"
     csv_path = paths["reports_dir"] / f"{base_filename}.csv"
     docx_path = paths["reports_dir"] / f"{base_filename}.docx"
+    xlsx_path = paths["reports_dir"] / f"{base_filename}.xlsx"
     json_path = paths["saved_manifests_dir"] / f"{base_filename}.json"
 
     txt_report = build_txt_manifest(manifest)
@@ -464,25 +460,27 @@ def save_manifest_outputs(
 
     save_csv_manifest(manifest, csv_path)
     save_docx_manifest(manifest, settings, docx_path)
+    save_manifest_xlsx(manifest, xlsx_path)
 
     with json_path.open("w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)
 
-    return txt_path, csv_path, docx_path, json_path
+    return txt_path, csv_path, docx_path, xlsx_path, json_path
 
 
 def save_csv_manifest(manifest: Dict[str, object], csv_path: Path) -> None:
-    """
-    Saves a CSV file with one row per hashed file.
-    """
     files = manifest.get("files", [])
     case_info = manifest.get("case_info", {})
+    report_options = manifest.get("report_options", {})
 
     fieldnames = [
         "case_number",
         "agency_case_number",
+        "exhibit_reference",
         "technician",
+        "reviewed_by",
         "source_description",
+        "include_signature_block",
         "file_name",
         "file_path",
         "file_size_bytes",
@@ -502,8 +500,11 @@ def save_csv_manifest(manifest: Dict[str, object], csv_path: Path) -> None:
             writer.writerow({
                 "case_number": case_info.get("case_number", ""),
                 "agency_case_number": case_info.get("agency_case_number", ""),
+                "exhibit_reference": case_info.get("exhibit_reference", ""),
                 "technician": case_info.get("technician", ""),
+                "reviewed_by": case_info.get("reviewed_by", ""),
                 "source_description": case_info.get("source_description", ""),
+                "include_signature_block": "Yes" if report_options.get("include_signature_block") else "No",
                 "file_name": record.get("file_name", ""),
                 "file_path": record.get("file_path", ""),
                 "file_size_bytes": record.get("file_size_bytes", ""),

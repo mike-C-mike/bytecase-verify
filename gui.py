@@ -41,7 +41,7 @@ class HashManifestApp:
     def __init__(self, root):
         self.root = root
         self.root.title(f"{APP_NAME} v{APP_VERSION}")
-        self.root.geometry("1250x800")
+        self.root.geometry("1280x820")
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
         self.settings = load_or_create_settings()
@@ -207,20 +207,24 @@ class HashManifestApp:
 
         self.case_number_var = tk.StringVar()
         self.agency_case_number_var = tk.StringVar()
+        self.exhibit_reference_var = tk.StringVar()
         self.technician_var = tk.StringVar()
+        self.reviewed_by_var = tk.StringVar()
         self.source_description_var = tk.StringVar()
 
         self.add_labeled_entry(case_frame, "Case Number", self.case_number_var, 0)
         self.add_labeled_entry(case_frame, "Agency Case Number", self.agency_case_number_var, 1)
-        self.add_labeled_technician_combo(case_frame, "Technician", self.technician_var, 2)
-        self.add_labeled_entry(case_frame, "Source Description", self.source_description_var, 3)
+        self.add_labeled_entry(case_frame, "Exhibit / Item Reference", self.exhibit_reference_var, 2)
+        self.add_labeled_technician_combo(case_frame, "Technician", self.technician_var, 3)
+        self.add_labeled_entry(case_frame, "Reviewed By", self.reviewed_by_var, 4)
+        self.add_labeled_entry(case_frame, "Source Description", self.source_description_var, 5)
 
-        ttk.Label(case_frame, text="Manifest / Verification / Compare Notes").grid(row=4, column=0, sticky="nw", pady=4)
+        ttk.Label(case_frame, text="Manifest / Verification / Compare Notes").grid(row=6, column=0, sticky="nw", pady=4)
         self.notes_text = tk.Text(case_frame, height=4, width=50)
-        self.notes_text.grid(row=4, column=1, sticky="ew", pady=4)
+        self.notes_text.grid(row=6, column=1, sticky="ew", pady=4)
         self.style_text_widget(self.notes_text)
 
-        options_frame = ttk.LabelFrame(parent, text="Hash Options", padding=10)
+        options_frame = ttk.LabelFrame(parent, text="Hash / Report Options", padding=10)
         options_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
         options_frame.columnconfigure(0, weight=1)
 
@@ -230,14 +234,18 @@ class HashManifestApp:
         self.recursive_var = tk.BooleanVar(value=True)
         self.include_explanation_var = tk.BooleanVar(value=True)
         self.include_generation_method_var = tk.BooleanVar(value=True)
+        self.include_signature_block_var = tk.BooleanVar(value=True)
 
         ttk.Checkbutton(options_frame, text="MD5", variable=self.md5_var).grid(row=0, column=0, sticky="w")
         ttk.Checkbutton(options_frame, text="SHA-1", variable=self.sha1_var).grid(row=1, column=0, sticky="w")
         ttk.Checkbutton(options_frame, text="SHA-256", variable=self.sha256_var).grid(row=2, column=0, sticky="w")
+
         ttk.Separator(options_frame).grid(row=3, column=0, sticky="ew", pady=8)
+
         ttk.Checkbutton(options_frame, text="Include folders recursively", variable=self.recursive_var).grid(row=4, column=0, sticky="w")
         ttk.Checkbutton(options_frame, text="Include hash generation method in TXT report", variable=self.include_generation_method_var).grid(row=5, column=0, sticky="w")
         ttk.Checkbutton(options_frame, text="Include hashing explanation in TXT report", variable=self.include_explanation_var).grid(row=6, column=0, sticky="w")
+        ttk.Checkbutton(options_frame, text="Include report signature block", variable=self.include_signature_block_var).grid(row=7, column=0, sticky="w")
 
         selection_frame = ttk.LabelFrame(parent, text="File / Folder Selection", padding=10)
         selection_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 0))
@@ -383,11 +391,14 @@ class HashManifestApp:
         self.technician_var.set(self.settings.get("default_technician", ""))
 
         hash_defaults = self.settings.get("hash_defaults", {})
+        report_defaults = self.settings.get("report_defaults", {})
+
         self.md5_var.set(bool(hash_defaults.get("md5", True)))
         self.sha1_var.set(bool(hash_defaults.get("sha1", False)))
         self.sha256_var.set(bool(hash_defaults.get("sha256", True)))
         self.include_explanation_var.set(bool(hash_defaults.get("include_hashing_explanation", True)))
         self.include_generation_method_var.set(bool(hash_defaults.get("include_hash_generation_method", True)))
+        self.include_signature_block_var.set(bool(report_defaults.get("include_signature_block", True)))
 
     def get_selected_algorithms(self):
         return {
@@ -673,11 +684,14 @@ class HashManifestApp:
             case_number=self.case_number_var.get(),
             agency_case_number=self.agency_case_number_var.get(),
             technician=self.technician_var.get(),
+            reviewed_by=self.reviewed_by_var.get(),
             source_description=self.source_description_var.get(),
+            exhibit_reference=self.exhibit_reference_var.get(),
             recursive=self.recursive_var.get(),
             algorithms=self.get_selected_algorithms(),
             include_hashing_explanation=self.include_explanation_var.get(),
             include_hash_generation_method=self.include_generation_method_var.get(),
+            include_signature_block=self.include_signature_block_var.get(),
             notes=notes,
             files=self.hash_results
         )
@@ -685,6 +699,7 @@ class HashManifestApp:
     def build_review_text(self, manifest, warnings):
         case_info = manifest.get("case_info", {})
         hash_settings = manifest.get("hash_settings", {})
+        report_options = manifest.get("report_options", {})
         files = manifest.get("files", [])
         summary = summarize_hash_results(files)
 
@@ -696,14 +711,17 @@ class HashManifestApp:
         lines.append("-" * 80)
         lines.append(f"Case Number: {case_info.get('case_number', '')}")
         lines.append(f"Agency Case Number: {case_info.get('agency_case_number', '')}")
+        lines.append(f"Exhibit / Item Reference: {case_info.get('exhibit_reference', '')}")
         lines.append(f"Technician: {case_info.get('technician', '')}")
+        lines.append(f"Reviewed By: {case_info.get('reviewed_by', '')}")
         lines.append(f"Source Description: {case_info.get('source_description', '')}")
         lines.append("")
-        lines.append("HASH SETTINGS")
+        lines.append("HASH / REPORT SETTINGS")
         lines.append("-" * 80)
         algorithms = hash_settings.get("algorithms", [])
         lines.append(f"Algorithms: {', '.join(algorithms) if algorithms else 'None'}")
         lines.append(f"Recursive Folder Selection: {'Yes' if hash_settings.get('recursive') else 'No'}")
+        lines.append(f"Include Signature Block: {'Yes' if report_options.get('include_signature_block') else 'No'}")
         lines.append("")
         lines.append("FILE SUMMARY")
         lines.append("-" * 80)
@@ -723,7 +741,7 @@ class HashManifestApp:
             lines.append("")
 
         lines.append("This review has not written any output files yet.")
-        lines.append("Click Confirm Export to write TXT, CSV, DOCX, and JSON outputs.")
+        lines.append("Click Confirm Export to write TXT, CSV, DOCX, XLSX, and JSON outputs.")
 
         return "\n".join(lines)
 
@@ -771,7 +789,7 @@ class HashManifestApp:
 
     def export_reviewed_manifest(self, manifest, review_window):
         try:
-            txt_path, csv_path, docx_path, json_path = save_manifest_outputs(manifest, self.settings)
+            txt_path, csv_path, docx_path, xlsx_path, json_path = save_manifest_outputs(manifest, self.settings)
 
             review_window.destroy()
             self.status_var.set("Manifest exported successfully.")
@@ -782,15 +800,19 @@ class HashManifestApp:
                 f"TXT:\n{txt_path}\n\n"
                 f"CSV:\n{csv_path}\n\n"
                 f"DOCX:\n{docx_path}\n\n"
+                f"XLSX:\n{xlsx_path}\n\n"
                 f"JSON:\n{json_path}"
             )
 
         except Exception as e:
-            messagebox.showerror("Export Error", f"The manifest could not be exported.\n\nDetails:\n{e}")
+            messagebox.showerror(
+                "Export Error",
+                f"The manifest could not be exported.\n\nDetails:\n{e}"
+            )
 
     def export_verification_report(self, report, review_window):
         try:
-            txt_path, csv_path, docx_path, json_path = save_verification_outputs(report, self.settings)
+            txt_path, csv_path, docx_path, xlsx_path, json_path = save_verification_outputs(report, self.settings)
 
             review_window.destroy()
             self.status_var.set("Verification report exported successfully.")
@@ -801,6 +823,7 @@ class HashManifestApp:
                 f"TXT:\n{txt_path}\n\n"
                 f"CSV:\n{csv_path}\n\n"
                 f"DOCX:\n{docx_path}\n\n"
+                f"XLSX:\n{xlsx_path}\n\n"
                 f"JSON:\n{json_path}"
             )
 
@@ -809,7 +832,7 @@ class HashManifestApp:
 
     def export_compare_report(self, report, review_window):
         try:
-            txt_path, csv_path, docx_path, json_path = save_compare_outputs(report, self.settings)
+            txt_path, csv_path, docx_path, xlsx_path, json_path = save_compare_outputs(report, self.settings)
 
             review_window.destroy()
             self.status_var.set("Compare report exported successfully.")
@@ -820,6 +843,7 @@ class HashManifestApp:
                 f"TXT:\n{txt_path}\n\n"
                 f"CSV:\n{csv_path}\n\n"
                 f"DOCX:\n{docx_path}\n\n"
+                f"XLSX:\n{xlsx_path}\n\n"
                 f"JSON:\n{json_path}"
             )
 
@@ -839,9 +863,14 @@ class HashManifestApp:
 
         self.case_number_var.set("")
         self.agency_case_number_var.set("")
+        self.exhibit_reference_var.set("")
         self.technician_var.set(self.settings.get("default_technician", ""))
+        self.reviewed_by_var.set("")
         self.source_description_var.set("")
         self.notes_text.delete("1.0", "end")
+        self.include_signature_block_var.set(
+            bool(self.settings.get("report_defaults", {}).get("include_signature_block", True))
+        )
 
         self.progress_var.set(0)
         self.status_var.set("Ready.")
@@ -880,7 +909,7 @@ class ReviewWindow:
 
         self.window = tk.Toplevel(app.root)
         self.window.title("Review Manifest")
-        self.window.geometry("850x600")
+        self.window.geometry("900x640")
         self.window.transient(app.root)
         self.window.grab_set()
 
@@ -963,7 +992,7 @@ class VerificationReviewWindow:
         lines.append(f"New File Not In Original Manifest: {summary.get('new_file_not_in_original_manifest', 0)}")
         lines.append(f"Errors: {summary.get('errors', 0)}")
         lines.append("")
-        lines.append("Click Confirm Export to write verification TXT, CSV, DOCX, and JSON outputs.")
+        lines.append("Click Confirm Export to write verification TXT, CSV, DOCX, XLSX, and JSON outputs.")
 
         text_box.insert("1.0", "\n".join(lines))
         text_box.configure(state="disabled")
@@ -1152,7 +1181,7 @@ class CompareReviewWindow:
         lines.append(f"Only in Manifest B: {summary.get('only_in_manifest_b', 0)}")
         lines.append(f"Errors: {summary.get('errors', 0)}")
         lines.append("")
-        lines.append("Click Confirm Export to write compare TXT, CSV, DOCX, and JSON outputs.")
+        lines.append("Click Confirm Export to write compare TXT, CSV, DOCX, XLSX, and JSON outputs.")
 
         text_box.insert("1.0", "\n".join(lines))
         text_box.configure(state="disabled")
@@ -1176,7 +1205,7 @@ class SettingsWindow:
 
         self.window = tk.Toplevel(app.root)
         self.window.title("Settings")
-        self.window.geometry("760x640")
+        self.window.geometry("760x690")
         self.window.transient(app.root)
         self.window.grab_set()
 
@@ -1202,6 +1231,7 @@ class SettingsWindow:
         self.build_output_tab(notebook)
         self.build_branding_tab(notebook)
         self.build_hash_defaults_tab(notebook)
+        self.build_report_defaults_tab(notebook)
 
         button_frame = ttk.Frame(self.window, padding=10)
         button_frame.grid(row=1, column=0, sticky="e")
@@ -1317,6 +1347,26 @@ class SettingsWindow:
             variable=self.default_include_explanation_var
         ).grid(row=5, column=0, sticky="w", pady=4)
 
+    def build_report_defaults_tab(self, notebook):
+        frame = ttk.Frame(notebook, padding=10)
+        notebook.add(frame, text="Report Defaults")
+        frame.columnconfigure(0, weight=1)
+
+        self.default_include_signature_block_var = tk.BooleanVar(value=True)
+
+        ttk.Checkbutton(
+            frame,
+            text="Include report signature block by default",
+            variable=self.default_include_signature_block_var
+        ).grid(row=0, column=0, sticky="w", pady=4)
+
+        note = (
+            "The signature block is optional per report. When enabled, TXT and DOCX reports "
+            "include technician and reviewer signature lines. XLSX records whether the option was enabled."
+        )
+
+        ttk.Label(frame, text=note, wraplength=680).grid(row=1, column=0, sticky="w", pady=(12, 0))
+
     def add_labeled_entry(self, parent, label_text, variable, row):
         ttk.Label(parent, text=label_text).grid(row=row, column=0, sticky="w", pady=5)
         ttk.Entry(parent, textvariable=variable).grid(row=row, column=1, sticky="ew", pady=5)
@@ -1326,6 +1376,7 @@ class SettingsWindow:
         output_paths = self.settings.get("output_paths", {})
         report_branding = self.settings.get("report_branding", {})
         hash_defaults = self.settings.get("hash_defaults", {})
+        report_defaults = self.settings.get("report_defaults", {})
         technicians = self.settings.get("technicians", [])
 
         if not isinstance(technicians, list):
@@ -1353,6 +1404,10 @@ class SettingsWindow:
         self.default_sha256_var.set(bool(hash_defaults.get("sha256", True)))
         self.default_include_explanation_var.set(bool(hash_defaults.get("include_hashing_explanation", True)))
         self.default_include_generation_method_var.set(bool(hash_defaults.get("include_hash_generation_method", True)))
+
+        self.default_include_signature_block_var.set(
+            bool(report_defaults.get("include_signature_block", True))
+        )
 
     def get_technicians_from_text(self):
         raw_text = self.technicians_text.get("1.0", "end").strip()
@@ -1429,6 +1484,10 @@ class SettingsWindow:
             "sha256": self.default_sha256_var.get(),
             "include_hashing_explanation": self.default_include_explanation_var.get(),
             "include_hash_generation_method": self.default_include_generation_method_var.get()
+        }
+
+        self.settings["report_defaults"] = {
+            "include_signature_block": self.default_include_signature_block_var.get()
         }
 
         save_settings(self.settings)

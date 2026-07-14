@@ -23,5 +23,8 @@
     "sha256": true,
     "include_hashing_explanation": true,
     "include_hash_generation_method": true
+  },
+  "report_defaults": {
+    "include_signature_block": true
   }
 }

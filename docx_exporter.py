@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 
 from docx import Document
@@ -117,8 +118,6 @@ def add_file_summary_table(document, summary):
 def add_hashed_files_table(document, files):
     """
     Adds a table with one row per hashed file.
-
-    This table can get wide, but it is useful for a first DOCX release.
     """
     table = document.add_table(rows=1, cols=8)
     table.style = "Table Grid"
@@ -173,6 +172,26 @@ def add_error_details(document, files):
         document.add_paragraph(f"Error: {record.get('error', '')}")
 
 
+def add_signature_block(document, manifest):
+    case_info = manifest.get("case_info", {})
+
+    document.add_heading("Report Review / Signature", level=1)
+
+    add_key_value_table(
+        document,
+        [
+            ("Technician", case_info.get("technician", "")),
+            ("Reviewed By", case_info.get("reviewed_by", "")),
+            ("Date", datetime.now().strftime("%Y-%m-%d"))
+        ]
+    )
+
+    document.add_paragraph()
+    document.add_paragraph("Technician Signature: _______________________________")
+    document.add_paragraph()
+    document.add_paragraph("Reviewer Signature: _______________________________")
+
+
 def build_docx_manifest(manifest, settings):
     """
     Builds the DOCX hash manifest report.
@@ -185,6 +204,7 @@ def build_docx_manifest(manifest, settings):
     department = manifest.get("department", {})
     case_info = manifest.get("case_info", {})
     hash_settings = manifest.get("hash_settings", {})
+    report_options = manifest.get("report_options", {})
     file_summary = manifest.get("file_summary", {})
     files = manifest.get("files", [])
 
@@ -227,7 +247,9 @@ def build_docx_manifest(manifest, settings):
         [
             ("Case Number", case_info.get("case_number", "")),
             ("Agency Case Number", case_info.get("agency_case_number", "")),
+            ("Exhibit / Item Reference", case_info.get("exhibit_reference", "")),
             ("Technician", case_info.get("technician", "")),
+            ("Reviewed By", case_info.get("reviewed_by", "")),
             ("Source Description", case_info.get("source_description", ""))
         ]
     )
@@ -240,7 +262,8 @@ def build_docx_manifest(manifest, settings):
             ("Algorithms", ", ".join(algorithms) if algorithms else "None selected"),
             ("Recursive Folder Selection", "Yes" if hash_settings.get("recursive") else "No"),
             ("Hash Generation Method Included", "Yes" if hash_settings.get("include_hash_generation_method") else "No"),
-            ("Hashing Explanation Included", "Yes" if hash_settings.get("include_hashing_explanation") else "No")
+            ("Hashing Explanation Included", "Yes" if hash_settings.get("include_hashing_explanation") else "No"),
+            ("Signature Block Included", "Yes" if report_options.get("include_signature_block") else "No")
         ]
     )
 
@@ -265,6 +288,9 @@ def build_docx_manifest(manifest, settings):
     add_hashed_files_table(document, files)
 
     add_error_details(document, files)
+
+    if report_options.get("include_signature_block"):
+        add_signature_block(document, manifest)
 
     document.add_paragraph()
     end_paragraph = document.add_paragraph("End of Hash Manifest")

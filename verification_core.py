@@ -5,6 +5,7 @@ from pathlib import Path
 
 from docx import Document
 from docx.shared import Inches, Pt
+from xlsx_exporter import save_verification_xlsx
 
 from settings_service import APP_NAME, APP_VERSION, ensure_directories
 
@@ -622,6 +623,7 @@ def save_verification_outputs(report, settings):
     txt_path = paths["reports_dir"] / f"{base_filename}.txt"
     csv_path = paths["reports_dir"] / f"{base_filename}.csv"
     docx_path = paths["reports_dir"] / f"{base_filename}.docx"
+    xlsx_path = paths["reports_dir"] / f"{base_filename}.xlsx"
     json_path = paths["saved_manifests_dir"] / f"{base_filename}.json"
 
     with txt_path.open("w", encoding="utf-8") as f:
@@ -629,8 +631,9 @@ def save_verification_outputs(report, settings):
 
     save_verification_csv(report, csv_path)
     save_verification_docx(report, docx_path)
+    save_verification_xlsx(report, xlsx_path)
 
     with json_path.open("w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
 
-    return txt_path, csv_path, docx_path, json_path
+    return txt_path, csv_path, docx_path, xlsx_path, json_path

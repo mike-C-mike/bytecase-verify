@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 APP_NAME = "Hash Manifest Generator"
-APP_VERSION = "0.5.0"
+APP_VERSION = "0.7.0"
 
 
 def get_base_dir():
@@ -46,6 +46,9 @@ DEFAULT_SETTINGS = {
         "sha256": True,
         "include_hashing_explanation": True,
         "include_hash_generation_method": True
+    },
+    "report_defaults": {
+        "include_signature_block": True
     }
 }
 
@@ -92,6 +95,17 @@ def normalize_settings(settings):
             cleaned_technicians.insert(0, default_technician)
 
     settings["technicians"] = cleaned_technicians
+
+    report_defaults = settings.get("report_defaults", {})
+
+    if not isinstance(report_defaults, dict):
+        report_defaults = {}
+
+    report_defaults["include_signature_block"] = bool(
+        report_defaults.get("include_signature_block", True)
+    )
+
+    settings["report_defaults"] = report_defaults
 
     return settings
 

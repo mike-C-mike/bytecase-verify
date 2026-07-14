@@ -1,4 +1,7 @@
-# Hash Manifest Generator v0.2.0
+# Hash Manifest Generator v0.6.0
 
 # DOCX report generation
 python-docx
+
+# XLSX workbook generation
+openpyxl
