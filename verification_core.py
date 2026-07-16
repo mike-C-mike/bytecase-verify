@@ -7,7 +7,7 @@ from docx import Document
 from docx.shared import Inches, Pt
 from xlsx_exporter import save_verification_xlsx
 
-from settings_service import APP_NAME, APP_SUBTITLE, APP_VERSION, PRODUCT_DOMAIN, PUBLISHER_NAME, SUITE_NAME, TOOL_FOLDER_NAME, ensure_directories
+from settings_service import APP_NAME, APP_SUBTITLE, APP_VERSION, PRODUCT_DOMAIN, PUBLISHER_NAME, SUITE_NAME, TOOL_FOLDER_NAME, ensure_directories, get_report_export_options
 
 
 ALGORITHM_KEYS = {
@@ -618,8 +618,9 @@ def save_verification_outputs(report, settings):
     original = report.get("original_manifest", {})
     case_info_for_paths = original.get("case_info", {})
     paths = ensure_directories(settings, case_number=case_info_for_paths.get("case_number", ""), mode_folder="verifications")
-    case_info = original.get("case_info", {})
+    export_options = get_report_export_options(settings)
 
+    case_info = original.get("case_info", {})
     case_number = case_info.get("case_number", "")
     source_description = case_info.get("source_description", "")
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -628,20 +629,42 @@ def save_verification_outputs(report, settings):
     safe_source = safe_filename(source_description, "verification")
     base_filename = f"{safe_case}_{safe_source}_{timestamp}_verification_report"
 
-    txt_path = paths["reports_dir"] / f"{base_filename}.txt"
-    csv_path = paths["reports_dir"] / f"{base_filename}.csv"
-    docx_path = paths["reports_dir"] / f"{base_filename}.docx"
-    xlsx_path = paths["reports_dir"] / f"{base_filename}.xlsx"
+    outputs = {
+        "txt": None,
+        "csv": None,
+        "docx": None,
+        "xlsx": None,
+        "json": None
+    }
+
+    if export_options.get("txt"):
+        txt_path = paths["reports_dir"] / f"{base_filename}.txt"
+
+        with txt_path.open("w", encoding="utf-8") as f:
+            f.write(build_verification_txt(report))
+
+        outputs["txt"] = txt_path
+
+    if export_options.get("csv"):
+        csv_path = paths["reports_dir"] / f"{base_filename}.csv"
+        save_verification_csv(report, csv_path)
+        outputs["csv"] = csv_path
+
+    if export_options.get("docx"):
+        docx_path = paths["reports_dir"] / f"{base_filename}.docx"
+        save_verification_docx(report, docx_path)
+        outputs["docx"] = docx_path
+
+    if export_options.get("xlsx"):
+        xlsx_path = paths["reports_dir"] / f"{base_filename}.xlsx"
+        save_verification_xlsx(report, xlsx_path)
+        outputs["xlsx"] = xlsx_path
+
     json_path = paths["saved_manifests_dir"] / f"{base_filename}.json"
-
-    with txt_path.open("w", encoding="utf-8") as f:
-        f.write(build_verification_txt(report))
-
-    save_verification_csv(report, csv_path)
-    save_verification_docx(report, docx_path)
-    save_verification_xlsx(report, xlsx_path)
 
     with json_path.open("w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
 
-    return txt_path, csv_path, docx_path, xlsx_path, json_path
+    outputs["json"] = json_path
+
+    return outputs

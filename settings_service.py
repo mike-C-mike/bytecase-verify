@@ -58,7 +58,12 @@ DEFAULT_SETTINGS = {
         "include_hash_generation_method": True
     },
     "report_defaults": {
-        "include_signature_block": True
+        "include_signature_block": True,
+        "export_txt": True,
+        "export_csv": False,
+        "export_docx": True,
+        "export_xlsx": False,
+        "export_json": True
     }
 }
 
@@ -216,7 +221,12 @@ def normalize_settings(settings):
         report_defaults = {}
 
     settings["report_defaults"] = {
-        "include_signature_block": bool(report_defaults.get("include_signature_block", True))
+        "include_signature_block": bool(report_defaults.get("include_signature_block", True)),
+        "export_txt": bool(report_defaults.get("export_txt", True)),
+        "export_csv": bool(report_defaults.get("export_csv", False)),
+        "export_docx": bool(report_defaults.get("export_docx", True)),
+        "export_xlsx": bool(report_defaults.get("export_xlsx", False)),
+        "export_json": True
     }
 
     hash_defaults = settings.get("hash_defaults", {})
@@ -247,6 +257,48 @@ def normalize_settings(settings):
     settings["unit_name"] = str(settings.get("unit_name", "")).strip()
 
     return settings
+
+
+def get_report_export_options(settings):
+    """
+    Return normalized report export preferences.
+
+    JSON is always enabled because ByteCase Verify needs JSON manifests for
+    later verification and comparison workflows.
+    """
+    report_defaults = settings.get("report_defaults", {})
+
+    if not isinstance(report_defaults, dict):
+        report_defaults = {}
+
+    return {
+        "txt": bool(report_defaults.get("export_txt", True)),
+        "csv": bool(report_defaults.get("export_csv", False)),
+        "docx": bool(report_defaults.get("export_docx", True)),
+        "xlsx": bool(report_defaults.get("export_xlsx", False)),
+        "json": True
+    }
+
+
+def format_export_path_list(outputs):
+    """
+    Build readable export path lines for user-facing messages.
+    """
+    labels = [
+        ("TXT", outputs.get("txt")),
+        ("CSV", outputs.get("csv")),
+        ("DOCX", outputs.get("docx")),
+        ("XLSX", outputs.get("xlsx")),
+        ("JSON", outputs.get("json")),
+    ]
+
+    lines = []
+
+    for label, path in labels:
+        if path:
+            lines.append(f"{label}:\n{path}")
+
+    return "\n\n".join(lines)
 
 
 def load_or_create_settings():

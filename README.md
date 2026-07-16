@@ -54,7 +54,7 @@ The application can:
 - Save structured JSON manifests for later verification.
 - Verify current files against a prior JSON manifest.
 - Compare two saved JSON manifests.
-- Export reports in TXT, CSV, DOCX, XLSX, and JSON formats.
+- Export reports in selectable TXT, CSV, DOCX, XLSX formats, with JSON always preserved for manifest/verification workflows.
 - Store agency, unit, technician, output folder, branding, and report defaults.
 - Include an optional report signature block.
 - Use the shared ByteCase visual theme with Dark, Light, and System Default modes.
@@ -102,17 +102,18 @@ Basic workflow:
 6. Export the manifest.
 ```
 
-Normal manifest export creates:
+Normal manifest export always creates JSON. Optional report formats can be enabled or disabled in Settings to reduce folder clutter.
+
+Optional formats:
 
 ```text
 TXT
 CSV
 DOCX
 XLSX
-JSON
 ```
 
-The JSON output can be loaded later for verification or comparison.
+JSON remains permanent because it can be loaded later for verification or comparison.
 
 ---
 
@@ -142,14 +143,13 @@ Verification results may include:
 | New file not in original manifest | A current file was not listed in the original manifest. |
 | Error | The file could not be compared or the comparison was ambiguous. |
 
-Verification export creates:
+Verification export always creates JSON and can also create the selected optional formats:
 
 ```text
 TXT
 CSV
 DOCX
 XLSX
-JSON
 ```
 
 ---
@@ -180,14 +180,13 @@ Compare results may include:
 | Only in Manifest B | A file exists in Manifest B but not Manifest A. |
 | Error | The file could not be compared or the comparison was ambiguous. |
 
-Compare export creates:
+Compare export always creates JSON and can also create the selected optional formats:
 
 ```text
 TXT
 CSV
 DOCX
 XLSX
-JSON
 ```
 
 ---
@@ -245,6 +244,22 @@ The XLSX workbook provides formatted worksheets, summary sheets, filters, frozen
 The JSON file is the structured manifest or report data. JSON is the preferred format for loading back into the tool for verification and comparison.
 
 ---
+
+
+## Export Format Preferences
+
+ByteCase Verify always exports JSON because JSON is the structured format required for later verification and manifest comparison workflows.
+
+Users can choose which optional formats are exported by default in Settings:
+
+```text
+TXT
+CSV
+DOCX
+XLSX
+```
+
+This helps keep output folders cleaner when a case only needs a JSON manifest plus one readable report format.
 
 ## Optional Signature Block
 

@@ -26,6 +26,11 @@
     "include_hash_generation_method": true
   },
   "report_defaults": {
-    "include_signature_block": true
+    "include_signature_block": true,
+    "export_txt": true,
+    "export_csv": false,
+    "export_docx": true,
+    "export_xlsx": false,
+    "export_json": true
   }
 }

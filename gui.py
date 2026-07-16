@@ -26,6 +26,7 @@ from settings_service import (
     SUITE_NAME,
     TOOL_FOLDER_NAME,
     ensure_directories,
+    format_export_path_list,
     get_default_output_root,
     load_or_create_settings,
     save_settings
@@ -57,6 +58,7 @@ class HashManifestApp:
         self.root = root
         self.root.title(f"{APP_NAME} - {APP_SUBTITLE} v{APP_VERSION}")
         self.root.geometry("1280x820")
+        self.root.minsize(1100, 680)
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
         self.settings = load_or_create_settings()
@@ -106,7 +108,7 @@ class HashManifestApp:
             return
 
         try:
-            if isinstance(widget, (tk.Tk, tk.Toplevel)):
+            if isinstance(widget, (tk.Tk, tk.Toplevel, tk.Canvas)):
                 widget.configure(bg=colors["app_background"])
             elif isinstance(widget, tk.Text):
                 self.style_text_widget(widget)
@@ -149,17 +151,82 @@ class HashManifestApp:
         ttk.Button(button_frame, text="About", command=self.open_about_window).grid(row=0, column=1, padx=4)
         ttk.Button(button_frame, text="Open Output Folder", command=self.open_output_folder).grid(row=0, column=2, padx=4)
 
-        main_pane = ttk.PanedWindow(self.root, orient=tk.VERTICAL)
-        main_pane.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
+        main_wrapper = ttk.Frame(self.root)
+        main_wrapper.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
+        main_wrapper.columnconfigure(0, weight=1)
+        main_wrapper.rowconfigure(0, weight=1)
 
-        upper_frame = ttk.Frame(main_pane)
-        lower_frame = ttk.Frame(main_pane)
+        colors = getattr(self, "theme_colors", {})
+        self.main_canvas = tk.Canvas(
+            main_wrapper,
+            highlightthickness=0,
+            borderwidth=0,
+            background=colors.get("app_background", "#0E1116")
+        )
+        self.main_canvas.grid(row=0, column=0, sticky="nsew")
 
-        main_pane.add(upper_frame, weight=1)
-        main_pane.add(lower_frame, weight=3)
+        main_y_scroll = ttk.Scrollbar(main_wrapper, orient="vertical", command=self.main_canvas.yview)
+        main_y_scroll.grid(row=0, column=1, sticky="ns")
+
+        main_x_scroll = ttk.Scrollbar(main_wrapper, orient="horizontal", command=self.main_canvas.xview)
+        main_x_scroll.grid(row=1, column=0, sticky="ew")
+
+        self.main_canvas.configure(
+            yscrollcommand=main_y_scroll.set,
+            xscrollcommand=main_x_scroll.set
+        )
+
+        self.main_content = ttk.Frame(self.main_canvas)
+        self.main_content_window = self.main_canvas.create_window(
+            (0, 0),
+            window=self.main_content,
+            anchor="nw"
+        )
+
+        self.main_content.columnconfigure(0, weight=1)
+        self.main_content.rowconfigure(1, weight=1)
+
+        self.main_content.bind("<Configure>", self.update_main_scroll_region)
+        self.main_canvas.bind("<Configure>", self.resize_main_canvas_window)
+        self.main_canvas.bind("<Enter>", self.bind_main_mousewheel)
+        self.main_canvas.bind("<Leave>", self.unbind_main_mousewheel)
+
+        upper_frame = ttk.Frame(self.main_content)
+        upper_frame.grid(row=0, column=0, sticky="ew")
+        upper_frame.columnconfigure(0, weight=1)
+        upper_frame.columnconfigure(1, weight=1)
+
+        lower_frame = ttk.Frame(self.main_content)
+        lower_frame.grid(row=1, column=0, sticky="nsew", pady=(10, 0))
+        lower_frame.columnconfigure(0, weight=1)
+        lower_frame.rowconfigure(0, weight=1)
 
         self.build_input_section(upper_frame)
         self.build_results_section(lower_frame)
+
+    def update_main_scroll_region(self, event=None):
+        if hasattr(self, "main_canvas"):
+            self.main_canvas.configure(scrollregion=self.main_canvas.bbox("all"))
+
+    def resize_main_canvas_window(self, event):
+        if hasattr(self, "main_canvas") and hasattr(self, "main_content_window"):
+            self.main_canvas.itemconfigure(self.main_content_window, width=max(event.width, 1100))
+
+    def bind_main_mousewheel(self, event=None):
+        self.root.bind_all("<MouseWheel>", self.on_main_mousewheel)
+        self.root.bind_all("<Shift-MouseWheel>", self.on_main_shift_mousewheel)
+
+    def unbind_main_mousewheel(self, event=None):
+        self.root.unbind_all("<MouseWheel>")
+        self.root.unbind_all("<Shift-MouseWheel>")
+
+    def on_main_mousewheel(self, event):
+        if hasattr(self, "main_canvas"):
+            self.main_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    def on_main_shift_mousewheel(self, event):
+        if hasattr(self, "main_canvas"):
+            self.main_canvas.xview_scroll(int(-1 * (event.delta / 120)), "units")
 
     def build_input_section(self, parent):
         parent.columnconfigure(0, weight=1)
@@ -274,7 +341,7 @@ class HashManifestApp:
         results_frame.rowconfigure(0, weight=1)
 
         columns = ("file_name", "size", "status", "md5", "sha1", "sha256", "path")
-        self.results_tree = ttk.Treeview(results_frame, columns=columns, show="headings", height=16)
+        self.results_tree = ttk.Treeview(results_frame, columns=columns, show="headings", height=10)
 
         headings = {
             "file_name": "File Name",
@@ -705,7 +772,7 @@ class HashManifestApp:
             lines.append("")
 
         lines.append("This review has not written any output files yet.")
-        lines.append("Click Confirm Export to write TXT, CSV, DOCX, XLSX, and JSON outputs.")
+        lines.append("Click Confirm Export to write the selected export formats. JSON is always created.")
 
         return "\n".join(lines)
 
@@ -753,7 +820,7 @@ class HashManifestApp:
 
     def export_reviewed_manifest(self, manifest, review_window):
         try:
-            txt_path, csv_path, docx_path, xlsx_path, json_path = save_manifest_outputs(manifest, self.settings)
+            outputs = save_manifest_outputs(manifest, self.settings)
 
             review_window.destroy()
             self.status_var.set("Manifest exported successfully.")
@@ -761,11 +828,7 @@ class HashManifestApp:
             messagebox.showinfo(
                 "Manifest Exported",
                 "Hash manifest exported successfully.\n\n"
-                f"TXT:\n{txt_path}\n\n"
-                f"CSV:\n{csv_path}\n\n"
-                f"DOCX:\n{docx_path}\n\n"
-                f"XLSX:\n{xlsx_path}\n\n"
-                f"JSON:\n{json_path}"
+                + format_export_path_list(outputs)
             )
 
         except Exception as e:
@@ -776,7 +839,7 @@ class HashManifestApp:
 
     def export_verification_report(self, report, review_window):
         try:
-            txt_path, csv_path, docx_path, xlsx_path, json_path = save_verification_outputs(report, self.settings)
+            outputs = save_verification_outputs(report, self.settings)
 
             review_window.destroy()
             self.status_var.set("Verification report exported successfully.")
@@ -784,11 +847,7 @@ class HashManifestApp:
             messagebox.showinfo(
                 "Verification Exported",
                 "Verification report exported successfully.\n\n"
-                f"TXT:\n{txt_path}\n\n"
-                f"CSV:\n{csv_path}\n\n"
-                f"DOCX:\n{docx_path}\n\n"
-                f"XLSX:\n{xlsx_path}\n\n"
-                f"JSON:\n{json_path}"
+                + format_export_path_list(outputs)
             )
 
         except Exception as e:
@@ -796,7 +855,7 @@ class HashManifestApp:
 
     def export_compare_report(self, report, review_window):
         try:
-            txt_path, csv_path, docx_path, xlsx_path, json_path = save_compare_outputs(report, self.settings)
+            outputs = save_compare_outputs(report, self.settings)
 
             review_window.destroy()
             self.status_var.set("Compare report exported successfully.")
@@ -804,11 +863,7 @@ class HashManifestApp:
             messagebox.showinfo(
                 "Compare Exported",
                 "Compare report exported successfully.\n\n"
-                f"TXT:\n{txt_path}\n\n"
-                f"CSV:\n{csv_path}\n\n"
-                f"DOCX:\n{docx_path}\n\n"
-                f"XLSX:\n{xlsx_path}\n\n"
-                f"JSON:\n{json_path}"
+                + format_export_path_list(outputs)
             )
 
         except Exception as e:
@@ -963,7 +1018,7 @@ class VerificationReviewWindow:
         lines.append(f"New File Not In Original Manifest: {summary.get('new_file_not_in_original_manifest', 0)}")
         lines.append(f"Errors: {summary.get('errors', 0)}")
         lines.append("")
-        lines.append("Click Confirm Export to write verification TXT, CSV, DOCX, XLSX, and JSON outputs.")
+        lines.append("Click Confirm Export to write the selected verification formats. JSON is always created.")
 
         text_box.insert("1.0", "\n".join(lines))
         text_box.configure(state="disabled")
@@ -1152,7 +1207,7 @@ class CompareReviewWindow:
         lines.append(f"Only in Manifest B: {summary.get('only_in_manifest_b', 0)}")
         lines.append(f"Errors: {summary.get('errors', 0)}")
         lines.append("")
-        lines.append("Click Confirm Export to write compare TXT, CSV, DOCX, XLSX, and JSON outputs.")
+        lines.append("Click Confirm Export to write the selected compare formats. JSON is always created.")
 
         text_box.insert("1.0", "\n".join(lines))
         text_box.configure(state="disabled")
@@ -1422,19 +1477,62 @@ class SettingsWindow:
         frame.columnconfigure(0, weight=1)
 
         self.default_include_signature_block_var = tk.BooleanVar(value=True)
+        self.export_txt_var = tk.BooleanVar(value=True)
+        self.export_csv_var = tk.BooleanVar(value=False)
+        self.export_docx_var = tk.BooleanVar(value=True)
+        self.export_xlsx_var = tk.BooleanVar(value=False)
+
+        ttk.Label(frame, text="Default Export Formats", style="Title.TLabel").grid(row=0, column=0, sticky="w", pady=(0, 8))
+
+        ttk.Checkbutton(
+            frame,
+            text="TXT report",
+            variable=self.export_txt_var
+        ).grid(row=1, column=0, sticky="w", pady=4)
+
+        ttk.Checkbutton(
+            frame,
+            text="CSV spreadsheet-friendly export",
+            variable=self.export_csv_var
+        ).grid(row=2, column=0, sticky="w", pady=4)
+
+        ttk.Checkbutton(
+            frame,
+            text="DOCX report",
+            variable=self.export_docx_var
+        ).grid(row=3, column=0, sticky="w", pady=4)
+
+        ttk.Checkbutton(
+            frame,
+            text="XLSX workbook",
+            variable=self.export_xlsx_var
+        ).grid(row=4, column=0, sticky="w", pady=4)
+
+        ttk.Label(
+            frame,
+            text=(
+                "JSON is always exported because ByteCase Verify uses JSON manifests for later "
+                "verification and comparison. Disable optional formats here to keep export folders cleaner."
+            ),
+            style="Muted.TLabel",
+            wraplength=680,
+            justify="left"
+        ).grid(row=5, column=0, sticky="w", pady=(8, 14))
+
+        ttk.Separator(frame).grid(row=6, column=0, sticky="ew", pady=8)
 
         ttk.Checkbutton(
             frame,
             text="Include report signature block by default",
             variable=self.default_include_signature_block_var
-        ).grid(row=0, column=0, sticky="w", pady=4)
+        ).grid(row=7, column=0, sticky="w", pady=4)
 
         note = (
             "The signature block is optional per report. When enabled, TXT and DOCX reports "
             "include technician and reviewer signature lines. XLSX records whether the option was enabled."
         )
 
-        ttk.Label(frame, text=note, wraplength=680).grid(row=1, column=0, sticky="w", pady=(12, 0))
+        ttk.Label(frame, text=note, wraplength=680).grid(row=8, column=0, sticky="w", pady=(12, 0))
 
     def add_labeled_entry(self, parent, label_text, variable, row):
         ttk.Label(parent, text=label_text).grid(row=row, column=0, sticky="w", pady=5)
@@ -1475,6 +1573,10 @@ class SettingsWindow:
         self.default_include_signature_block_var.set(
             bool(report_defaults.get("include_signature_block", True))
         )
+        self.export_txt_var.set(bool(report_defaults.get("export_txt", True)))
+        self.export_csv_var.set(bool(report_defaults.get("export_csv", False)))
+        self.export_docx_var.set(bool(report_defaults.get("export_docx", True)))
+        self.export_xlsx_var.set(bool(report_defaults.get("export_xlsx", False)))
 
     def get_technicians_from_text(self):
         raw_text = self.technicians_text.get("1.0", "end").strip()
@@ -1553,7 +1655,12 @@ class SettingsWindow:
         }
 
         self.settings["report_defaults"] = {
-            "include_signature_block": self.default_include_signature_block_var.get()
+            "include_signature_block": self.default_include_signature_block_var.get(),
+            "export_txt": self.export_txt_var.get(),
+            "export_csv": self.export_csv_var.get(),
+            "export_docx": self.export_docx_var.get(),
+            "export_xlsx": self.export_xlsx_var.get(),
+            "export_json": True
         }
 
         save_settings(self.settings)
